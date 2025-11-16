@@ -1,0 +1,13 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Modern hexagon shape for Davnex icon -->
+  <path d="M8 8L16 4L24 8V16L16 20L8 16V8Z" fill="url(#gradient1)" stroke="#1d1d1f" stroke-width="0.5"/>
+  <path d="M12 12L16 10L20 12V16L16 18L12 16V12Z" fill="#1d1d1f" fill-opacity="0.1"/>
+  
+  <defs>
+    <linearGradient id="gradient1" x1="8" y1="4" x2="24" y2="20">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="50%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#ec4899"/>
+    </linearGradient>
+  </defs>
+</svg>
