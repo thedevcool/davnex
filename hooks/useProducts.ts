@@ -25,6 +25,13 @@ export const useProducts = (filters?: {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
+        // Check if Firebase is configured
+        if (!db) {
+          console.warn("Firebase is not configured. Using fallback data.");
+          setLoading(false);
+          return;
+        }
+
         const constraints: QueryConstraint[] = [orderBy("createdAt", "desc")];
 
         if (filters?.category) {

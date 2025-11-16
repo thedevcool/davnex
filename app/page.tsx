@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
 import HeroBanner from "@/components/sections/HeroBanner";
 import ProductNavigation from "@/components/sections/ProductNavigation";
 import LatestSection from "@/components/sections/LatestSection";
@@ -10,10 +9,9 @@ import QuickLinks from "@/components/sections/QuickLinks";
 import { getActiveSections } from "@/lib/sections";
 import { Section } from "@/types";
 
-export default function Home() {
+function HomeContent() {
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
-  const searchParams = useSearchParams();
 
   useEffect(() => {
     const fetchSections = async () => {
@@ -88,5 +86,17 @@ export default function Home() {
 
       <QuickLinks />
     </>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }

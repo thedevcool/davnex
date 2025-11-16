@@ -4,9 +4,10 @@ import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useRef, useEffect, useState } from "react";
 import { useProducts } from "@/hooks/useProducts";
+import { Product } from "@/types";
 
 // Fallback products if Firebase isn't configured
-const fallbackProducts = [
+const fallbackProducts: Product[] = [
   {
     id: "1",
     name: "Pro Wireless Earbuds",
@@ -16,6 +17,7 @@ const fallbackProducts = [
     category: "Audio",
     description: "Premium Sound",
     inStock: true,
+    badge: "NEW",
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -28,6 +30,7 @@ const fallbackProducts = [
     category: "Audio",
     description: "Studio Quality",
     inStock: true,
+    badge: "NEW",
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -52,6 +55,7 @@ const fallbackProducts = [
     category: "Wearables",
     description: "Track Your Fitness",
     inStock: true,
+    badge: "NEW",
     createdAt: new Date(),
     updatedAt: new Date(),
   },

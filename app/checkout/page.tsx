@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/cartStore";
 import { useUserStore } from "@/store/userStore";
@@ -32,9 +32,19 @@ export default function CheckoutPage() {
 
   const [loading, setLoading] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
+  const [isClient, setIsClient] = useState(false);
 
-  if (items.length === 0 && !orderComplete) {
-    router.push("/cart");
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    if (isClient && items.length === 0 && !orderComplete) {
+      router.push("/cart");
+    }
+  }, [isClient, items.length, orderComplete, router]);
+
+  if (!isClient || (items.length === 0 && !orderComplete)) {
     return null;
   }
 
