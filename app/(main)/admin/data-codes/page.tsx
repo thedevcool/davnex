@@ -8,8 +8,18 @@ import ProtectedRoute from "@/components/admin/ProtectedRoute";
 import Logo from "@/components/Logo";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
-import { KeyRound, LogOut, RefreshCw, Trash2 } from "lucide-react";
+import { KeyRound, LogOut, RefreshCw, Trash2, LayoutGrid, Receipt } from "lucide-react";
 import type { DataPlan, DataCode } from "@/types";
+
+interface DataPurchase {
+  id: string;
+  planId: string;
+  planName: string;
+  usersCount: number;
+  price: number;
+  codeId: string;
+  purchasedAt: Date;
+}
 
 const USER_OPTIONS = [3, 5];
 
@@ -29,10 +39,15 @@ export default function AdminDataCodesPage() {
   const [loadingCodes, setLoadingCodes] = useState(false);
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deletingPlan, setDeletingPlan] = useState<string | null>(null);
+  const [purchases, setPurchases] = useState<DataPurchase[]>([]);
+  const [loadingPurchases, setLoadingPurchases] = useState(false);
+  const [showPurchases, setShowPurchases] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     fetchPlans();
+    fetchPurchases();
   }, []);
 
   const fetchPlans = async () => {
@@ -55,6 +70,31 @@ export default function AdminDataCodesPage() {
       console.error("Error fetching plans:", err);
     }
   };
+
+  const fetchPurchases = async () => {
+    if (!isFirebaseConfigured() || !db) return;
+    setLoadingPurchases(true);
+
+    try {
+      const purchasesQuery = query(
+        collection(db, "dataPurchases"),
+        orderBy("purchasedAt", "desc"),
+      );
+      const snapshot = await getDocs(purchasesQuery);
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        purchasedAt: doc.data().purchasedAt?.toDate(),
+      })) as DataPurchase[];
+      setPurchases(data);
+    } catch (err) {
+      console.error("Error fetching purchases:", err);
+    } finally {
+      setLoadingPurchases(false);
+    }
+  };
+
+  const totalRevenue = purchases.reduce((sum, purchase) => sum + purchase.price, 0);
 
   const selectedPlan = useMemo(() => {
     if (selectedPlanId && !isNewPlan) {
@@ -225,6 +265,52 @@ export default function AdminDataCodesPage() {
     }
   };
 
+  const handleDeletePlan = async (planToDelete: DataPlan) => {
+    if (
+      !confirm(
+        `Delete plan "${planToDelete.name}" (${planToDelete.usersCount} Users - ₦${planToDelete.price.toLocaleString()})?\n\nThis will delete the plan and ALL associated codes.\n\nThis action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingPlan(planToDelete.id);
+    setError("");
+
+    try {
+      const response = await fetch("/api/data-codes/delete-plan", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ planId: planToDelete.id }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to delete plan");
+      }
+
+      // Remove plan from list
+      setPlans((prev) => prev.filter((p) => p.id !== planToDelete.id));
+      
+      // Reset if this was the selected plan
+      if (selectedPlanId === planToDelete.id) {
+        setSelectedPlanId("");
+        setIsNewPlan(true);
+        setCodes([]);
+        setPlanId(null);
+      }
+
+      alert(`Plan deleted successfully. ${result.deletedCodesCount} code(s) were also removed.`);
+    } catch (err: any) {
+      console.error("Error deleting plan:", err);
+      setError(err?.message || "Failed to delete plan");
+    } finally {
+      setDeletingPlan(null);
+    }
+  };
+
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-apple-gray-50">
@@ -243,6 +329,13 @@ export default function AdminDataCodesPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowPurchases(!showPurchases)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 rounded-lg transition-colors shadow-sm"
+                >
+                  <Receipt className="w-4 h-4" />
+                  {showPurchases ? "Hide" : "View"} Purchases
+                </button>
                 <Link
                   href="/admin/dashboard"
                   className="px-4 py-2 text-sm font-medium text-apple-gray-700 hover:bg-apple-gray-100 rounded-lg transition-colors"
@@ -262,6 +355,131 @@ export default function AdminDataCodesPage() {
         </header>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Purchases Log Section */}
+          {showPurchases && (
+            <section className="bg-white rounded-2xl shadow-sm p-6 mb-8">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-green-500" />
+                  <h2 className="text-lg font-semibold text-apple-gray-800">
+                    Purchase Log
+                  </h2>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-apple-gray-500">Total Revenue</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    ₦{totalRevenue.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              {loadingPurchases ? (
+                <div className="text-center py-8">
+                  <div className="inline-block w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+                  <p className="mt-2 text-sm text-apple-gray-500">Loading purchases...</p>
+                </div>
+              ) : purchases.length === 0 ? (
+                <div className="text-center py-8">
+                  <Receipt className="w-12 h-12 text-apple-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-apple-gray-500">No purchases yet</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-apple-gray-200">
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-apple-gray-700">Date</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-apple-gray-700">Plan</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-apple-gray-700">Users</th>
+                        <th className="text-right py-3 px-4 text-sm font-semibold text-apple-gray-700">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {purchases.map((purchase) => (
+                        <tr key={purchase.id} className="border-b border-apple-gray-100 hover:bg-apple-gray-50">
+                          <td className="py-3 px-4 text-sm text-apple-gray-600">
+                            {purchase.purchasedAt?.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4 text-sm font-medium text-apple-gray-900">
+                            {purchase.planName}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-apple-gray-600">
+                            {purchase.usersCount} Users
+                          </td>
+                          <td className="py-3 px-4 text-sm font-semibold text-green-600 text-right">
+                            ₦{purchase.price.toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="mt-4 flex items-center justify-between text-sm text-apple-gray-600">
+                    <span>{purchases.length} total purchase{purchases.length !== 1 ? 's' : ''}</span>
+                    <button
+                      onClick={fetchPurchases}
+                      className="flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Existing Plans Section */}
+          {plans.length > 0 && (
+            <section className="bg-white rounded-2xl shadow-sm p-6 mb-8">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <LayoutGrid className="w-5 h-5 text-blue-500" />
+                  <h2 className="text-lg font-semibold text-apple-gray-800">
+                    All Data Plans
+                  </h2>
+                </div>
+                <span className="text-sm text-apple-gray-500">
+                  {plans.length} plan{plans.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {plans.map((plan) => (
+                  <div
+                    key={plan.id}
+                    className="relative border border-apple-gray-200 rounded-xl p-4 hover:border-blue-300 transition-colors"
+                  >
+                    <div className="mb-3">
+                      <h3 className="font-semibold text-apple-gray-900 mb-1">
+                        {plan.name}
+                      </h3>
+                      <p className="text-sm text-apple-gray-600">
+                        {plan.usersCount} Users
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-lg font-bold text-blue-600">
+                        ₦{plan.price.toLocaleString()}
+                      </span>
+                      <button
+                        onClick={() => handleDeletePlan(plan)}
+                        disabled={deletingPlan === plan.id}
+                        className="flex items-center justify-center w-8 h-8 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete plan and all codes"
+                      >
+                        {deletingPlan === plan.id ? (
+                          <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">
             <section className="bg-white rounded-2xl shadow-sm p-6">
               <div className="flex items-center gap-2 mb-6">

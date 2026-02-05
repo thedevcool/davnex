@@ -30,9 +30,7 @@ export default function CheckoutPage() {
     state: "",
   });
 
-  const [deliveryMethod, setDeliveryMethod] = useState<
-    "door-to-door" | "station-pickup"
-  >("station-pickup");
+  const [deliveryMethod, setDeliveryMethod] = useState<"door-to-door" | "station-pickup">("station-pickup");
   const deliveryFee = deliveryMethod === "door-to-door" ? 500 : 0;
 
   const [loading, setLoading] = useState(false);
@@ -66,7 +64,7 @@ export default function CheckoutPage() {
 
   const createOrder = async (
     reference: string,
-    status: "paid" | "pending" | "failed",
+    status: "paid" | "pending" | "failed"
   ) => {
     if (!isFirebaseConfigured() || !db) {
       console.error("Firebase not configured, cannot save order");
@@ -105,26 +103,21 @@ export default function CheckoutPage() {
           try {
             const productRef = doc(db, "products", item.product.id);
             const productSnap = await getDoc(productRef);
-
+            
             if (productSnap.exists()) {
               const currentStock = productSnap.data().stockQuantity || 0;
               const newStock = Math.max(0, currentStock - item.quantity);
-
+              
               await updateDoc(productRef, {
                 stockQuantity: newStock,
                 inStock: newStock > 0,
                 updatedAt: new Date(),
               });
-
-              console.log(
-                `✅ Updated stock for ${item.product.name}: ${currentStock} -> ${newStock}`,
-              );
+              
+              console.log(`✅ Updated stock for ${item.product.name}: ${currentStock} -> ${newStock}`);
             }
           } catch (stockError) {
-            console.error(
-              `❌ Error updating stock for product ${item.product.id}:`,
-              stockError,
-            );
+            console.error(`❌ Error updating stock for product ${item.product.id}:`, stockError);
             // Continue processing other products even if one fails
           }
         }
@@ -177,7 +170,7 @@ export default function CheckoutPage() {
 
         if (!paystackKey || paystackKey === "your_paystack_public_key_here") {
           alert(
-            "⚠️  Paystack is not configured.\n\nPlease add your Paystack public key to .env.local file.\n\nGet your key from: https://dashboard.paystack.com/",
+            "⚠️  Paystack is not configured.\n\nPlease add your Paystack public key to .env.local file.\n\nGet your key from: https://dashboard.paystack.com/"
           );
           setLoading(false);
           return;
@@ -205,10 +198,7 @@ export default function CheckoutPage() {
                 {
                   display_name: "Delivery Method",
                   variable_name: "delivery_method",
-                  value:
-                    deliveryMethod === "door-to-door"
-                      ? "Door-to-Door Delivery"
-                      : "Station Pickup",
+                  value: deliveryMethod === "door-to-door" ? "Door-to-Door Delivery" : "Station Pickup",
                 },
               ],
             },
@@ -223,7 +213,7 @@ export default function CheckoutPage() {
                 console.error("Error saving order:", error);
                 alert(
                   "Payment successful but order could not be saved. Please contact support with reference: " +
-                    response.reference,
+                    response.reference
                 );
               } finally {
                 setLoading(false);
@@ -246,7 +236,7 @@ export default function CheckoutPage() {
       script.onerror = () => {
         console.error("Failed to load Paystack script");
         alert(
-          "Failed to load payment system. Please check your internet connection and try again.",
+          "Failed to load payment system. Please check your internet connection and try again."
         );
         setLoading(false);
       };
@@ -438,9 +428,7 @@ export default function CheckoutPage() {
                       name="deliveryMethod"
                       value="station-pickup"
                       checked={deliveryMethod === "station-pickup"}
-                      onChange={(e) =>
-                        setDeliveryMethod(e.target.value as "station-pickup")
-                      }
+                      onChange={(e) => setDeliveryMethod(e.target.value as "station-pickup")}
                       className="mt-1 w-4 h-4 text-blue-600"
                     />
                     <div className="flex-1">
@@ -462,9 +450,7 @@ export default function CheckoutPage() {
                       name="deliveryMethod"
                       value="door-to-door"
                       checked={deliveryMethod === "door-to-door"}
-                      onChange={(e) =>
-                        setDeliveryMethod(e.target.value as "door-to-door")
-                      }
+                      onChange={(e) => setDeliveryMethod(e.target.value as "door-to-door")}
                       className="mt-1 w-4 h-4 text-blue-600"
                     />
                     <div className="flex-1">
@@ -472,9 +458,7 @@ export default function CheckoutPage() {
                         <span className="font-semibold text-apple-gray-900">
                           Door-to-Door Delivery
                         </span>
-                        <span className="font-bold text-apple-gray-900">
-                          ₦500
-                        </span>
+                        <span className="font-bold text-apple-gray-900">₦500</span>
                       </div>
                       <p className="text-sm text-apple-gray-600">
                         Get your order delivered right to your doorstep
@@ -543,14 +527,8 @@ export default function CheckoutPage() {
                       <span className="text-xs ml-1">(Door-to-Door)</span>
                     )}
                   </span>
-                  <span
-                    className={
-                      deliveryFee === 0 ? "text-green-600 font-medium" : ""
-                    }
-                  >
-                    {deliveryFee === 0
-                      ? "FREE"
-                      : `₦${deliveryFee.toLocaleString()}`}
+                  <span className={deliveryFee === 0 ? "text-green-600 font-medium" : ""}>
+                    {deliveryFee === 0 ? "FREE" : `₦${deliveryFee.toLocaleString()}`}
                   </span>
                 </div>
                 <div className="flex justify-between text-xl font-bold text-apple-gray-900 pt-2 border-t">
@@ -563,9 +541,10 @@ export default function CheckoutPage() {
                 <div className="flex items-start gap-3">
                   <Package className="w-5 h-5 text-blue-600 mt-0.5" />
                   <p className="text-sm text-apple-gray-700">
-                    {deliveryMethod === "door-to-door"
+                    {deliveryMethod === "door-to-door" 
                       ? "Your order will be delivered to your doorstep within 2-5 business days"
-                      : "Your order will be ready for pickup at our station within 1-3 business days"}
+                      : "Your order will be ready for pickup at our station within 1-3 business days"
+                    }
                   </p>
                 </div>
               </div>

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  addDoc,
   collection,
   deleteDoc,
+  doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -47,6 +50,30 @@ export async function POST(request: Request) {
     const data = codeDoc.data();
     const decryptedCode = decryptCode(data.encryptedCode as string);
 
+    // Get plan details
+    const planRef = doc(db, "dataPlans", planId);
+    const planDoc = await getDoc(planRef);
+    
+    if (!planDoc.exists()) {
+      return NextResponse.json(
+        { error: "Plan not found" },
+        { status: 404 },
+      );
+    }
+
+    const planData = planDoc.data();
+
+    // Log the purchase
+    await addDoc(collection(db, "dataPurchases"), {
+      planId: planId,
+      planName: planData.name,
+      usersCount: planData.usersCount,
+      price: planData.price,
+      codeId: codeDoc.id,
+      purchasedAt: new Date(),
+    });
+
+    // Delete the code
     await deleteDoc(codeDoc.ref);
 
     return NextResponse.json({

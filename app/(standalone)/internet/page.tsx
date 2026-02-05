@@ -510,10 +510,12 @@ export default function LodgeInternetPage() {
                     Our support team is here to assist you with any questions about Lodge Internet plans or codes.
                   </p>
                   <a 
-                    href="/support" 
+                    href="https://wa.me/2348130437519" 
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="inline-flex items-center text-blue-600 hover:text-blue-700 font-semibold transition-colors"
                   >
-                    Contact Support
+                    Contact Support on WhatsApp
                     <svg className="w-5 h-5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>

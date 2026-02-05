@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import "./globals.css";
+import "../globals.css";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
   title:
@@ -8,14 +10,16 @@ export const metadata: Metadata = {
     "Shop premium tech accessories at Davnex. Discover wireless earbuds, headphones, phone cases, smartwatches, chargers, and more. Quality accessories for modern living.",
 };
 
-export default function RootLayout({
+export default function MainLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
+    <>
+      <Header />
+      <main>{children}</main>
+      <Footer />
+    </>
   );
 }
