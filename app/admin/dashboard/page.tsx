@@ -706,110 +706,118 @@ export default function AdminDashboard() {
         </header>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Tabs */}
-          <div className="flex gap-4 mb-8">
-            <button
-              onClick={() => {
-                setActiveTab("products");
-                setShowForm(false);
-                resetForm();
-                resetSectionForm();
-                resetCategoryForm();
-              }}
-              className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
-                activeTab === "products"
-                  ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
-                  : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
-              }`}
-            >
-              <Package className="w-5 h-5" />
-              Products
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("sections");
-                setShowForm(false);
-                resetForm();
-                resetSectionForm();
-                resetCategoryForm();
-              }}
-              className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
-                activeTab === "sections"
-                  ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
-                  : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
-              }`}
-            >
-              <LayoutGrid className="w-5 h-5" />
-              Sections
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("orders");
-                setShowForm(false);
-                resetForm();
-                resetSectionForm();
-                resetCategoryForm();
-              }}
-              className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
-                activeTab === "orders"
-                  ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
-                  : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
-              }`}
-            >
-              <ShoppingCart className="w-5 h-5" />
-              Orders
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("categories");
-                setShowForm(false);
-                resetForm();
-                resetSectionForm();
-                resetCategoryForm();
-              }}
-              className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
-                activeTab === "categories"
-                  ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
-                  : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
-              }`}
-            >
-              <LayoutGrid className="w-5 h-5" />
-              Categories
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("emails");
-                setShowForm(false);
-                resetForm();
-                resetSectionForm();
-                resetCategoryForm();
-              }}
-              className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
-                activeTab === "emails"
-                  ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
-                  : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
-              }`}
-            >
-              <Mail className="w-5 h-5" />
-              Emails
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("dataCodes");
-                setShowForm(false);
-                resetForm();
-                resetSectionForm();
-                resetCategoryForm();
-              }}
-              className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
-                activeTab === "dataCodes"
-                  ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
-                  : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
-              }`}
-            >
-              <KeyRound className="w-5 h-5" />
-              Data Codes
-            </button>
+          {/* Tabs - Mobile Responsive Horizontal Scroll */}
+          <div className="mb-8 -mx-4 px-4 sm:mx-0 sm:px-0">
+            <div className="flex gap-2 sm:gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+              <button
+                onClick={() => {
+                  setActiveTab("products");
+                  setShowForm(false);
+                  resetForm();
+                  resetSectionForm();
+                  resetCategoryForm();
+                }}
+                className={`flex items-center gap-2 px-4 sm:px-6 py-3 font-semibold rounded-lg transition-all whitespace-nowrap flex-shrink-0 snap-start ${
+                  activeTab === "products"
+                    ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
+                    : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
+                }`}
+              >
+                <Package className="w-5 h-5" />
+                <span className="hidden sm:inline">Products</span>
+                <span className="sm:hidden">Products</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("sections");
+                  setShowForm(false);
+                  resetForm();
+                  resetSectionForm();
+                  resetCategoryForm();
+                }}
+                className={`flex items-center gap-2 px-4 sm:px-6 py-3 font-semibold rounded-lg transition-all whitespace-nowrap flex-shrink-0 snap-start ${
+                  activeTab === "sections"
+                    ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
+                    : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
+                }`}
+              >
+                <LayoutGrid className="w-5 h-5" />
+                <span className="hidden sm:inline">Sections</span>
+                <span className="sm:hidden">Sections</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("orders");
+                  setShowForm(false);
+                  resetForm();
+                  resetSectionForm();
+                  resetCategoryForm();
+                }}
+                className={`flex items-center gap-2 px-4 sm:px-6 py-3 font-semibold rounded-lg transition-all whitespace-nowrap flex-shrink-0 snap-start ${
+                  activeTab === "orders"
+                    ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
+                    : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
+                }`}
+              >
+                <ShoppingCart className="w-5 h-5" />
+                <span className="hidden sm:inline">Orders</span>
+                <span className="sm:hidden">Orders</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("categories");
+                  setShowForm(false);
+                  resetForm();
+                  resetSectionForm();
+                  resetCategoryForm();
+                }}
+                className={`flex items-center gap-2 px-4 sm:px-6 py-3 font-semibold rounded-lg transition-all whitespace-nowrap flex-shrink-0 snap-start ${
+                  activeTab === "categories"
+                    ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
+                    : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
+                }`}
+              >
+                <LayoutGrid className="w-5 h-5" />
+                <span className="hidden sm:inline">Categories</span>
+                <span className="sm:hidden">Categories</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("emails");
+                  setShowForm(false);
+                  resetForm();
+                  resetSectionForm();
+                  resetCategoryForm();
+                }}
+                className={`flex items-center gap-2 px-4 sm:px-6 py-3 font-semibold rounded-lg transition-all whitespace-nowrap flex-shrink-0 snap-start ${
+                  activeTab === "emails"
+                    ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
+                    : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
+                }`}
+              >
+                <Mail className="w-5 h-5" />
+                <span className="hidden sm:inline">Emails</span>
+                <span className="sm:hidden">Emails</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("dataCodes");
+                  setShowForm(false);
+                  resetForm();
+                  resetSectionForm();
+                  resetCategoryForm();
+                }}
+                className={`flex items-center gap-2 px-4 sm:px-6 py-3 font-semibold rounded-lg transition-all whitespace-nowrap flex-shrink-0 snap-start ${
+                  activeTab === "dataCodes"
+                    ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
+                    : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
+                }`}
+              >
+                <KeyRound className="w-5 h-5" />
+                <span className="hidden sm:inline">Data Codes</span>
+                <span className="sm:hidden">Data Codes</span>
+              </button>
+            </div>
           </div>
 
           {/* Stats */}
