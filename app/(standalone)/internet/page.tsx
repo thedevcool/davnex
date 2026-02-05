@@ -205,7 +205,7 @@ export default function LodgeInternetPage() {
         onError={() => setError("Failed to load payment system. Please refresh the page.")}
       />
         {/* Hero Section */}
-        <section className="relative bg-gradient-to-b from-apple-gray-100 to-white pt-32 pb-16 overflow-hidden">
+        <section className="relative bg-gradient-to-b from-apple-gray-100 to-white pt-20 pb-16 overflow-hidden">
           {/* Decorative background pattern */}
           <div className="absolute inset-0 opacity-30">
             <div className="absolute top-10 right-1/4 w-96 h-96 bg-gradient-radial from-blue-100 to-transparent rounded-full blur-3xl"></div>
