@@ -578,7 +578,7 @@ export default function LodgeInternetPage() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center text-blue-600 hover:text-blue-700 font-semibold transition-colors bg-blue-50 hover:bg-blue-100 px-5 py-3 rounded-xl"
                   >
-                    Chat with Stephen (Ekiti)
+                    Chat with Stephen
                     <svg
                       className="w-5 h-5 ml-1"
                       fill="none"
