@@ -32,6 +32,7 @@ import {
   User,
   Mail,
   KeyRound,
+  Receipt,
 } from "lucide-react";
 import Logo from "@/components/Logo";
 
@@ -691,7 +692,14 @@ export default function AdminDashboard() {
                   className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-apple-gray-700 hover:bg-apple-gray-100 rounded-lg transition-colors"
                 >
                   <KeyRound className="w-4 h-4" />
-                  Data Codes
+                  <span className="hidden sm:inline">Data Codes</span>
+                </Link>
+                <Link
+                  href="/admin/purchase-logs"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-apple-gray-700 hover:bg-apple-gray-100 rounded-lg transition-colors"
+                >
+                  <Receipt className="w-4 h-4" />
+                  <span className="hidden sm:inline">Purchase Logs</span>
                 </Link>
                 <button
                   onClick={handleLogout}
@@ -709,6 +717,24 @@ export default function AdminDashboard() {
           {/* Tabs - Mobile Responsive Horizontal Scroll */}
           <div className="mb-8 -mx-4 px-4 sm:mx-0 sm:px-0">
             <div className="flex gap-2 sm:gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+              <button
+                onClick={() => {
+                  setActiveTab("dataCodes");
+                  setShowForm(false);
+                  resetForm();
+                  resetSectionForm();
+                  resetCategoryForm();
+                }}
+                className={`flex items-center gap-2 px-4 sm:px-6 py-3 font-semibold rounded-lg transition-all whitespace-nowrap flex-shrink-0 snap-start ${
+                  activeTab === "dataCodes"
+                    ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
+                    : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
+                }`}
+              >
+                <KeyRound className="w-5 h-5" />
+                <span className="hidden sm:inline">Data Codes</span>
+                <span className="sm:hidden">Data Codes</span>
+              </button>
               <button
                 onClick={() => {
                   setActiveTab("products");
@@ -798,24 +824,6 @@ export default function AdminDashboard() {
                 <Mail className="w-5 h-5" />
                 <span className="hidden sm:inline">Emails</span>
                 <span className="sm:hidden">Emails</span>
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab("dataCodes");
-                  setShowForm(false);
-                  resetForm();
-                  resetSectionForm();
-                  resetCategoryForm();
-                }}
-                className={`flex items-center gap-2 px-4 sm:px-6 py-3 font-semibold rounded-lg transition-all whitespace-nowrap flex-shrink-0 snap-start ${
-                  activeTab === "dataCodes"
-                    ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
-                    : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
-                }`}
-              >
-                <KeyRound className="w-5 h-5" />
-                <span className="hidden sm:inline">Data Codes</span>
-                <span className="sm:hidden">Data Codes</span>
               </button>
             </div>
           </div>
