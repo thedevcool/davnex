@@ -8,7 +8,7 @@ import ProtectedRoute from "@/components/admin/ProtectedRoute";
 import Logo from "@/components/Logo";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
-import { KeyRound, LogOut, RefreshCw, Trash2, LayoutGrid, Receipt } from "lucide-react";
+import { KeyRound, LogOut, RefreshCw, Trash2, LayoutGrid, Receipt, MessageSquare, Star } from "lucide-react";
 import type { DataPlan, DataCode } from "@/types";
 
 interface DataPurchase {
@@ -19,6 +19,17 @@ interface DataPurchase {
   price: number;
   codeId: string;
   purchasedAt: Date;
+}
+
+interface FeedbackItem {
+  id: string;
+  name: string;
+  email: string;
+  planName: string;
+  type: "review" | "complaint";
+  rating?: number;
+  message: string;
+  createdAt: string;
 }
 
 const USER_OPTIONS = [3, 5];
@@ -44,10 +55,15 @@ export default function AdminDataCodesPage() {
   const [loadingPurchases, setLoadingPurchases] = useState(false);
   const [showPurchases, setShowPurchases] = useState(false);
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackFilter, setFeedbackFilter] = useState<"all" | "review" | "complaint">("all");
 
   useEffect(() => {
     fetchPlans();
     fetchPurchases();
+    fetchFeedback();
   }, []);
 
   const fetchPlans = async () => {
@@ -91,6 +107,23 @@ export default function AdminDataCodesPage() {
       console.error("Error fetching purchases:", err);
     } finally {
       setLoadingPurchases(false);
+    }
+  };
+
+  const fetchFeedback = async () => {
+    setLoadingFeedback(true);
+
+    try {
+      const response = await fetch("/api/data-codes/feedback");
+      const result = await response.json();
+      
+      if (response.ok) {
+        setFeedback(result.feedback || []);
+      }
+    } catch (err) {
+      console.error("Error fetching feedback:", err);
+    } finally {
+      setLoadingFeedback(false);
     }
   };
 
@@ -335,6 +368,13 @@ export default function AdminDataCodesPage() {
                 >
                   <Receipt className="w-4 h-4" />
                   {showPurchases ? "Hide" : "View"} Purchases
+                </button>
+                <button
+                  onClick={() => setShowFeedback(!showFeedback)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 rounded-lg transition-colors shadow-sm"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  {showFeedback ? "Hide" : "View"} Feedback
                 </button>
                 <Link
                   href="/admin/dashboard"
@@ -703,6 +743,147 @@ export default function AdminDataCodesPage() {
               )}
             </section>
           </div>
+
+          {/* Feedback Section */}
+          {showFeedback && (
+            <section className="bg-white rounded-2xl shadow-sm p-6 mt-8">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-purple-500" />
+                  <h2 className="text-lg font-semibold text-apple-gray-800">
+                    Customer Feedback
+                  </h2>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setFeedbackFilter("all")}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        feedbackFilter === "all"
+                          ? "bg-purple-100 text-purple-700"
+                          : "bg-apple-gray-100 text-apple-gray-600 hover:bg-apple-gray-200"
+                      }`}
+                    >
+                      All ({feedback.length})
+                    </button>
+                    <button
+                      onClick={() => setFeedbackFilter("review")}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        feedbackFilter === "review"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-apple-gray-100 text-apple-gray-600 hover:bg-apple-gray-200"
+                      }`}
+                    >
+                      Reviews ({feedback.filter(f => f.type === "review").length})
+                    </button>
+                    <button
+                      onClick={() => setFeedbackFilter("complaint")}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        feedbackFilter === "complaint"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-apple-gray-100 text-apple-gray-600 hover:bg-apple-gray-200"
+                      }`}
+                    >
+                      Complaints ({feedback.filter(f => f.type === "complaint").length})
+                    </button>
+                  </div>
+                  <button
+                    onClick={fetchFeedback}
+                    className="flex items-center gap-1 text-purple-600 hover:text-purple-700 font-medium text-sm"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              {loadingFeedback ? (
+                <div className="text-center py-8">
+                  <div className="inline-block w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                  <p className="mt-2 text-sm text-apple-gray-500">Loading feedback...</p>
+                </div>
+              ) : feedback.filter(f => feedbackFilter === "all" || f.type === feedbackFilter).length === 0 ? (
+                <div className="text-center py-8">
+                  <MessageSquare className="w-12 h-12 text-apple-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-apple-gray-500">
+                    {feedbackFilter === "all" ? "No feedback yet" : `No ${feedbackFilter}s yet`}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {feedback
+                    .filter(f => feedbackFilter === "all" || f.type === feedbackFilter)
+                    .map((item) => (
+                      <div
+                        key={item.id}
+                        className={`border-2 rounded-xl p-5 transition-all ${
+                          item.type === "review"
+                            ? "border-green-200 bg-green-50/50 hover:border-green-300"
+                            : "border-red-200 bg-red-50/50 hover:border-red-300"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`text-2xl ${item.type === "review" ? "text-green-600" : "text-red-600"}`}>
+                                {item.type === "review" ? "⭐" : "⚠️"}
+                              </span>
+                              <h3 className="font-semibold text-apple-gray-900">
+                                {item.name}
+                              </h3>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                item.type === "review"
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-red-100 text-red-700"
+                              }`}>
+                                {item.type === "review" ? "Review" : "Complaint"}
+                              </span>
+                            </div>
+                            <p className="text-sm text-apple-gray-600">
+                              {item.email} • {item.planName}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-apple-gray-500">
+                              {new Date(item.createdAt).toLocaleDateString()}
+                            </p>
+                            <p className="text-xs text-apple-gray-400">
+                              {new Date(item.createdAt).toLocaleTimeString()}
+                            </p>
+                          </div>
+                        </div>
+
+                        {item.type === "review" && item.rating && (
+                          <div className="flex items-center gap-1 mb-3">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`w-5 h-5 ${
+                                  star <= item.rating!
+                                    ? "fill-yellow-400 text-yellow-400"
+                                    : "text-apple-gray-300"
+                                }`}
+                              />
+                            ))}
+                            <span className="ml-2 text-sm font-medium text-apple-gray-700">
+                              {item.rating}/5
+                            </span>
+                          </div>
+                        )}
+
+                        <div className={`p-4 rounded-lg ${
+                          item.type === "review" ? "bg-white" : "bg-white"
+                        }`}>
+                          <p className="text-apple-gray-800 whitespace-pre-wrap">
+                            {item.message}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </section>
+          )}
         </div>
       </div>
     </ProtectedRoute>

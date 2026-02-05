@@ -23,6 +23,12 @@ export default function LodgeInternetPage() {
   const [paystackLoaded, setPaystackLoaded] = useState(false);
   const [selectedDeviceCount, setSelectedDeviceCount] = useState<number>(3);
   const [email, setEmail] = useState<string>("");
+  const [feedbackName, setFeedbackName] = useState<string>("");
+  const [feedbackType, setFeedbackType] = useState<"review" | "complaint">("review");
+  const [feedbackRating, setFeedbackRating] = useState<number>(5);
+  const [feedbackMessage, setFeedbackMessage] = useState<string>("");
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
   useEffect(() => {
     fetchPlans();
@@ -132,10 +138,12 @@ export default function LodgeInternetPage() {
       }
 
       // Proceed with payment if codes are available
+      // Add ₦100 bank charges to the price
+      const totalAmount = selectedPlan.price + 100;
       const handler = window.PaystackPop.setup({
         key: paystackKey,
         email: email,
-        amount: selectedPlan.price * 100, // Paystack expects amount in kobo
+        amount: totalAmount * 100, // Paystack expects amount in kobo
         currency: "NGN",
         ref: `LODGE-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         metadata: {
@@ -194,6 +202,48 @@ export default function LodgeInternetPage() {
     if (revealedCode) {
       navigator.clipboard.writeText(revealedCode);
       alert("Code copied to clipboard!");
+    }
+  };
+
+  const handleFeedbackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!feedbackName.trim() || !feedbackMessage.trim()) {
+      setError("Please enter your name and feedback message");
+      return;
+    }
+
+    setSubmittingFeedback(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/data-codes/feedback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: feedbackName,
+          email: email,
+          planName: selectedPlan?.name || "",
+          type: feedbackType,
+          rating: feedbackType === "review" ? feedbackRating : null,
+          message: feedbackMessage,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to submit feedback");
+      }
+
+      setFeedbackSubmitted(true);
+      setFeedbackName("");
+      setFeedbackMessage("");
+    } catch (err: any) {
+      console.error("Error submitting feedback:", err);
+      setError(err?.message || "Failed to submit feedback");
+    } finally {
+      setSubmittingFeedback(false);
     }
   };
 
@@ -321,6 +371,144 @@ export default function LodgeInternetPage() {
                   <span>Each code is single-use and cannot be recovered</span>
                 </p>
               </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Feedback/Review Section - Shows after payment */}
+      {revealedCode && !feedbackSubmitted && (
+        <section className="py-12 bg-white">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-3xl shadow-lg p-8 border border-blue-200">
+              <h3 className="text-2xl font-semibold text-apple-gray-900 mb-4 text-center">
+                📝 Share Your Feedback (Optional)
+              </h3>
+              <p className="text-apple-gray-600 mb-6 text-center">
+                Help us improve our service by sharing your experience
+              </p>
+
+              <form onSubmit={handleFeedbackSubmit} className="space-y-6">
+                <div>
+                  <label htmlFor="feedbackName" className="block text-sm font-medium text-apple-gray-700 mb-2">
+                    Your Name
+                  </label>
+                  <input
+                    type="text"
+                    id="feedbackName"
+                    value={feedbackName}
+                    onChange={(e) => setFeedbackName(e.target.value)}
+                    placeholder="Enter your name"
+                    required
+                    className="w-full px-4 py-3 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none text-base transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                    Plan Purchased
+                  </label>
+                  <input
+                    type="text"
+                    value={selectedPlan?.name || ""}
+                    disabled
+                    className="w-full px-4 py-3 rounded-xl border-2 border-apple-gray-200 bg-apple-gray-50 text-apple-gray-600 text-base"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-apple-gray-700 mb-3">
+                    Feedback Type
+                  </label>
+                  <div className="flex gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setFeedbackType("review")}
+                      className={`flex-1 px-6 py-3 rounded-xl font-semibold transition-all ${
+                        feedbackType === "review"
+                          ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg"
+                          : "bg-white border-2 border-apple-gray-300 text-apple-gray-700 hover:border-blue-400"
+                      }`}
+                    >
+                      ⭐ Review
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFeedbackType("complaint")}
+                      className={`flex-1 px-6 py-3 rounded-xl font-semibold transition-all ${
+                        feedbackType === "complaint"
+                          ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg"
+                          : "bg-white border-2 border-apple-gray-300 text-apple-gray-700 hover:border-blue-400"
+                      }`}
+                    >
+                      ⚠️ Complaint
+                    </button>
+                  </div>
+                </div>
+
+                {feedbackType === "review" && (
+                  <div>
+                    <label className="block text-sm font-medium text-apple-gray-700 mb-3">
+                      Rating
+                    </label>
+                    <div className="flex gap-2 justify-center">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setFeedbackRating(star)}
+                          className="text-4xl transition-transform hover:scale-110"
+                        >
+                          {star <= feedbackRating ? "⭐" : "☆"}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-center text-sm text-apple-gray-600 mt-2">
+                      {feedbackRating} out of 5 stars
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <label htmlFor="feedbackMessage" className="block text-sm font-medium text-apple-gray-700 mb-2">
+                    {feedbackType === "review" ? "Your Review" : "Your Complaint"}
+                  </label>
+                  <textarea
+                    id="feedbackMessage"
+                    value={feedbackMessage}
+                    onChange={(e) => setFeedbackMessage(e.target.value)}
+                    placeholder={feedbackType === "review" ? "Share your experience..." : "Describe your issue..."}
+                    required
+                    rows={4}
+                    className="w-full px-4 py-3 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none text-base transition-colors resize-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submittingFeedback}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold px-8 py-4 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                >
+                  {submittingFeedback ? "Submitting..." : "Submit Feedback"}
+                </button>
+              </form>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Feedback Submitted Confirmation */}
+      {feedbackSubmitted && (
+        <section className="py-12 bg-white">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-3xl shadow-lg p-8 border border-green-300 text-center">
+              <div className="text-6xl mb-4">✅</div>
+              <h3 className="text-2xl font-semibold text-green-900 mb-2">
+                Thank You for Your Feedback!
+              </h3>
+              <p className="text-green-700">
+                We appreciate you taking the time to share your thoughts with us.
+              </p>
             </div>
           </div>
         </section>
@@ -491,10 +679,26 @@ export default function LodgeInternetPage() {
                       <p className="text-2xl font-semibold text-apple-gray-900 mb-1">
                         {selectedPlan.name}
                       </p>
-                      <p className="text-lg text-apple-gray-600 flex items-center gap-2">
+                      <p className="text-lg text-apple-gray-600 flex items-center gap-2 mb-3">
                         <Smartphone className="w-5 h-5" />
                         {selectedDeviceCount} Devices
                       </p>
+                      <div className="text-sm text-apple-gray-600 space-y-1">
+                        <p className="flex justify-between">
+                          <span>Plan Price:</span>
+                          <span className="font-semibold">₦{selectedPlan.price.toLocaleString()}</span>
+                        </p>
+                        <p className="flex justify-between">
+                          <span>Bank Charges:</span>
+                          <span className="font-semibold">₦100</span>
+                        </p>
+                        <div className="border-t border-apple-gray-300 pt-1 mt-1">
+                          <p className="flex justify-between text-base font-bold text-apple-gray-900">
+                            <span>Total:</span>
+                            <span>₦{(selectedPlan.price + 100).toLocaleString()}</span>
+                          </p>
+                        </div>
+                      </div>
                     </div>
                     <button
                       type="submit"
@@ -505,7 +709,7 @@ export default function LodgeInternetPage() {
                         ? "Loading payment..."
                         : purchasing
                           ? "Processing..."
-                          : `Pay ₦${selectedPlan.price.toLocaleString()}`}
+                          : `Pay ₦${(selectedPlan.price + 100).toLocaleString()}`}
                     </button>
                   </div>
                 </form>
