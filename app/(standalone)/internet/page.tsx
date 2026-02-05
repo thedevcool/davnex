@@ -22,7 +22,6 @@ export default function LodgeInternetPage() {
   const [error, setError] = useState("");
   const [paystackLoaded, setPaystackLoaded] = useState(false);
   const [selectedUserCount, setSelectedUserCount] = useState<number>(3);
-  const [availability, setAvailability] = useState<Record<string, { available: boolean; count: number }>>({});
 
   useEffect(() => {
     fetchPlans();
@@ -46,42 +45,12 @@ export default function LodgeInternetPage() {
         createdAt: doc.data().createdAt?.toDate(),
         updatedAt: doc.data().updatedAt?.toDate(),
       })) as DataPlan[];
-      const activePlans = data.filter((plan) => plan.isActive);
-      setPlans(activePlans);
-      
-      // Fetch availability for all plans
-      await fetchAvailability(activePlans);
+      setPlans(data.filter((plan) => plan.isActive));
     } catch (err) {
       console.error("Error fetching plans:", err);
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchAvailability = async (plansToCheck: DataPlan[]) => {
-    const availabilityPromises = plansToCheck.map(async (plan) => {
-      try {
-        const response = await fetch("/api/data-codes/check-availability", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ planId: plan.id }),
-        });
-        const data = await response.json();
-        return { planId: plan.id, data };
-      } catch (error) {
-        console.error(`Error checking availability for plan ${plan.id}:`, error);
-        return { planId: plan.id, data: { available: false, count: 0 } };
-      }
-    });
-
-    const results = await Promise.all(availabilityPromises);
-    const availabilityMap: Record<string, { available: boolean; count: number }> = {};
-    results.forEach(({ planId, data }) => {
-      availabilityMap[planId] = data;
-    });
-    setAvailability(availabilityMap);
   };
 
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId);
@@ -383,30 +352,17 @@ export default function LodgeInternetPage() {
             ) : (
               <>
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-6xl mx-auto mb-12">
-                  {displayPlans.map((plan) => {
-                    const planAvailability = availability[plan.id];
-                    const isAvailable = planAvailability?.available !== false;
-                    const codesCount = planAvailability?.count ?? 0;
-                    
-                    return (
+                  {displayPlans.map((plan) => (
                     <div
                       key={plan.id}
-                      onClick={() => isAvailable && setSelectedPlanId(plan.id)}
-                      className={`group relative bg-white rounded-3xl shadow-sm p-8 transition-all duration-300 border-2 ${
-                        !isAvailable
-                          ? "opacity-60 cursor-not-allowed border-apple-gray-200 bg-apple-gray-50"
-                          : selectedPlanId === plan.id
-                          ? "border-blue-500 shadow-2xl scale-105 bg-gradient-to-br from-blue-50 to-purple-50 cursor-pointer"
-                          : "border-apple-gray-200 hover:border-blue-300 hover:shadow-xl hover:scale-102 cursor-pointer"
+                      onClick={() => setSelectedPlanId(plan.id)}
+                      className={`group relative bg-white rounded-3xl shadow-sm p-8 cursor-pointer transition-all duration-300 border-2 ${
+                        selectedPlanId === plan.id
+                          ? "border-blue-500 shadow-2xl scale-105 bg-gradient-to-br from-blue-50 to-purple-50"
+                          : "border-apple-gray-200 hover:border-blue-300 hover:shadow-xl hover:scale-102"
                       }`}
                     >
-                      {!isAvailable && (
-                        <div className="absolute -top-3 -right-3 px-3 py-1 bg-red-500 text-white text-xs font-bold rounded-full shadow-lg">
-                          Out of Stock
-                        </div>
-                      )}
-                      
-                      {selectedPlanId === plan.id && isAvailable && (
+                      {selectedPlanId === plan.id && (
                         <div className="absolute -top-3 -right-3 w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
                           <svg
                             className="w-6 h-6 text-white"
@@ -447,25 +403,12 @@ export default function LodgeInternetPage() {
                           </span>
                         </div>
 
-                        <div className="text-sm text-apple-gray-600 font-medium mb-3">
+                        <div className="text-sm text-apple-gray-600 font-medium">
                           One-time payment • {selectedUserCount} Users
-                        </div>
-                        
-                        <div className={`text-sm font-semibold px-3 py-2 rounded-lg inline-block ${
-                          isAvailable
-                            ? codesCount > 5
-                              ? 'bg-green-100 text-green-700'
-                              : codesCount > 0
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : 'bg-red-100 text-red-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}>
-                          {isAvailable ? `${codesCount} code${codesCount !== 1 ? 's' : ''} available` : 'Out of stock'}
                         </div>
                       </div>
                     </div>
-                  );
-                  })}
+                  ))}
                 </div>
 
                 {selectedPlan && (
