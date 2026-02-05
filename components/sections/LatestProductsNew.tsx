@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRef, useEffect, useState } from "react";
 import { useProducts } from "@/hooks/useProducts";
 import { Product } from "@/types";
+import ProductBadge from "@/components/ProductBadge";
+import PriceDisplay from "@/components/PriceDisplay";
 
 // Fallback products if Firebase isn't configured
 const fallbackProducts: Product[] = [
@@ -17,6 +19,7 @@ const fallbackProducts: Product[] = [
     category: "Audio",
     description: "Premium Sound",
     inStock: true,
+    stockQuantity: 10,
     badge: "NEW",
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -30,6 +33,7 @@ const fallbackProducts: Product[] = [
     category: "Audio",
     description: "Studio Quality",
     inStock: true,
+    stockQuantity: 5,
     badge: "NEW",
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -43,6 +47,7 @@ const fallbackProducts: Product[] = [
     category: "Cases",
     description: "Premium Protection",
     inStock: true,
+    stockQuantity: 15,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -55,6 +60,7 @@ const fallbackProducts: Product[] = [
     category: "Wearables",
     description: "Track Your Fitness",
     inStock: true,
+    stockQuantity: 8,
     badge: "NEW",
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -68,6 +74,7 @@ const fallbackProducts: Product[] = [
     category: "Charging",
     description: "20000mAh Capacity",
     inStock: true,
+    stockQuantity: 20,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -80,6 +87,7 @@ const fallbackProducts: Product[] = [
     category: "Charging",
     description: "Multi-Device Charging",
     inStock: true,
+    stockQuantity: 12,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -92,6 +100,7 @@ const fallbackProducts: Product[] = [
     category: "Cases",
     description: "Fits up to 16 inch",
     inStock: true,
+    stockQuantity: 25,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -181,11 +190,7 @@ const LatestProducts = () => {
                   />
                 </div>
                 <div className="px-2">
-                  {product.badge && (
-                    <span className="inline-block px-2 py-1 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white text-xs font-semibold rounded mb-2">
-                      {product.badge}
-                    </span>
-                  )}
+                  <ProductBadge product={product} />
                   <h3 className="text-2xl font-semibold text-apple-gray-900 mb-1 group-hover:text-blue-600 transition-colors">
                     {product.name}
                   </h3>
@@ -194,11 +199,7 @@ const LatestProducts = () => {
                       {product.description}
                     </p>
                   )}
-                  <p className="text-sm text-apple-gray-900">
-                    From ₦{product.price.toLocaleString()} or ₦
-                    {Math.floor(product.price / 12).toLocaleString()} per month
-                    for 12 months
-                  </p>
+                  <PriceDisplay product={product} showMonthlyPrice />
                 </div>
               </Link>
             ))}

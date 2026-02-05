@@ -14,10 +14,11 @@ import {
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 import { uploadToCloudinary, isCloudinaryConfigured } from "@/lib/cloudinary";
-import { Product, Section, Order } from "@/types";
+import { Product, Section, Order, Category } from "@/types";
 import ProtectedRoute from "@/components/admin/ProtectedRoute";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Package,
   Plus,
@@ -29,20 +30,24 @@ import {
   LayoutGrid,
   ShoppingCart,
   User,
+  Mail,
+  KeyRound,
 } from "lucide-react";
 import Logo from "@/components/Logo";
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<
-    "products" | "sections" | "orders"
+    "products" | "sections" | "orders" | "categories" | "emails" | "dataCodes"
   >("products");
   const [products, setProducts] = useState<Product[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingSection, setEditingSection] = useState<Section | null>(null);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [uploading, setUploading] = useState(false);
 
   const { logout } = useAuthStore();
@@ -53,12 +58,14 @@ export default function AdminDashboard() {
     name: "",
     price: 0,
     originalPrice: 0,
+    stockQuantity: 0,
     category: "",
     description: "",
     badge: "",
     inStock: true,
     featured: false,
     sectionId: "",
+    availableDate: "",
   });
 
   const [sectionFormData, setSectionFormData] = useState({
@@ -75,6 +82,7 @@ export default function AdminDashboard() {
     fetchProducts();
     fetchSections();
     fetchOrders();
+    fetchCategories();
   }, []);
 
   const fetchProducts = async () => {
@@ -109,7 +117,7 @@ export default function AdminDashboard() {
     try {
       const q = query(
         collection(db, "sections"),
-        orderBy("displayOrder", "asc")
+        orderBy("displayOrder", "asc"),
       );
       const querySnapshot = await getDocs(q);
       const sectionsData = querySnapshot.docs.map((doc) => ({
@@ -145,6 +153,62 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchCategories = async () => {
+    if (!isFirebaseConfigured() || !db) {
+      return;
+    }
+
+    try {
+      const q = query(
+        collection(db, "categories"),
+        orderBy("displayOrder", "asc"),
+      );
+      const querySnapshot = await getDocs(q);
+      const categoriesData = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate(),
+        updatedAt: doc.data().updatedAt?.toDate(),
+      })) as Category[];
+      setCategories(categoriesData);
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+      alert("Failed to load categories");
+    }
+  };
+
+  const handleOrderStatusChange = async (
+    orderId: string,
+    newStatus: Order["orderStatus"],
+  ) => {
+    if (!isFirebaseConfigured() || !db) {
+      alert("Firebase is not configured");
+      return;
+    }
+
+    try {
+      const orderRef = doc(db, "orders", orderId);
+      await updateDoc(orderRef, {
+        orderStatus: newStatus,
+        updatedAt: new Date(),
+      });
+
+      // Update local state
+      setOrders((prevOrders) =>
+        prevOrders.map((order) =>
+          order.id === orderId
+            ? { ...order, orderStatus: newStatus, updatedAt: new Date() }
+            : order,
+        ),
+      );
+
+      console.log(`✅ Order ${orderId} status updated to ${newStatus}`);
+    } catch (error) {
+      console.error("Error updating order status:", error);
+      alert("Failed to update order status");
+    }
+  };
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -172,7 +236,7 @@ export default function AdminDashboard() {
   const uploadImage = async (file: File): Promise<string> => {
     if (!isCloudinaryConfigured()) {
       throw new Error(
-        "Cloudinary is not configured. Please add your Cloudinary credentials to .env.local"
+        "Cloudinary is not configured. Please add your Cloudinary credentials to .env.local",
       );
     }
 
@@ -190,14 +254,14 @@ export default function AdminDashboard() {
 
     if (!isFirebaseConfigured()) {
       alert(
-        "Firebase is not configured. Please add your Firebase credentials to .env.local file."
+        "Firebase is not configured. Please add your Firebase credentials to .env.local file.",
       );
       return;
     }
 
     if (!isCloudinaryConfigured() && imageFile) {
       alert(
-        "Cloudinary is not configured. Please add your Cloudinary credentials to .env.local file to upload images."
+        "Cloudinary is not configured. Please add your Cloudinary credentials to .env.local file to upload images.",
       );
       return;
     }
@@ -212,11 +276,11 @@ export default function AdminDashboard() {
     const duplicateProduct = products.find(
       (p) =>
         p.name.toLowerCase().trim() === formData.name.toLowerCase().trim() &&
-        p.id !== editingProduct?.id
+        p.id !== editingProduct?.id,
     );
     if (duplicateProduct) {
       alert(
-        `A product with the name "${formData.name}" already exists. Please use a unique name.`
+        `A product with the name "${formData.name}" already exists. Please use a unique name.`,
       );
       return;
     }
@@ -240,10 +304,29 @@ export default function AdminDashboard() {
         imageUrl = await uploadImage(imageFile);
       }
 
+      // Restock detection logic
+      const oldStockQuantity = editingProduct?.stockQuantity || 0;
+      const newStockQuantity = formData.stockQuantity;
+      let restockDate = editingProduct?.restockDate;
+
+      // If stock was 0 and now is > 0, set restockDate
+      if (oldStockQuantity === 0 && newStockQuantity > 0) {
+        restockDate = new Date();
+      }
+
+      // Automatically update inStock based on stockQuantity
+      const inStock = newStockQuantity > 0;
+
       const productData = {
         ...formData,
         image: imageUrl,
         sectionId: formData.sectionId || null,
+        stockQuantity: newStockQuantity,
+        inStock: inStock,
+        restockDate: restockDate || null,
+        availableDate: formData.availableDate
+          ? new Date(formData.availableDate)
+          : null,
         updatedAt: new Date(),
       };
 
@@ -278,12 +361,16 @@ export default function AdminDashboard() {
       name: product.name,
       price: product.price,
       originalPrice: product.originalPrice || 0,
+      stockQuantity: product.stockQuantity || 0,
       category: product.category,
       description: product.description,
       badge: product.badge || "",
       inStock: product.inStock,
       featured: product.featured || false,
       sectionId: product.sectionId || "",
+      availableDate: product.availableDate
+        ? new Date(product.availableDate).toISOString().slice(0, 16)
+        : "",
     });
     setImagePreview(product.image);
     setShowForm(true);
@@ -312,12 +399,14 @@ export default function AdminDashboard() {
       name: "",
       price: 0,
       originalPrice: 0,
+      stockQuantity: 0,
       category: "",
       description: "",
       badge: "",
       inStock: true,
       featured: false,
       sectionId: "",
+      availableDate: "",
     });
     setImageFile(null);
     setImagePreview("");
@@ -355,11 +444,11 @@ export default function AdminDashboard() {
       (s) =>
         s.name.toLowerCase().trim() ===
           sectionFormData.name.toLowerCase().trim() &&
-        s.id !== editingSection?.id
+        s.id !== editingSection?.id,
     );
     if (duplicateSection) {
       alert(
-        `A section with the name "${sectionFormData.name}" already exists. Please use a unique name.`
+        `A section with the name "${sectionFormData.name}" already exists. Please use a unique name.`,
       );
       return;
     }
@@ -418,6 +507,166 @@ export default function AdminDashboard() {
     }
   };
 
+  // Category handlers
+  const [categoryFormData, setCategoryFormData] = useState({
+    name: "",
+    slug: "",
+    image: "",
+    displayOrder: 0,
+    isActive: true,
+  });
+  const [categoryImageFile, setCategoryImageFile] = useState<File | null>(null);
+  const [categoryImagePreview, setCategoryImagePreview] = useState<string>("");
+
+  const handleCategoryImageChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert("Image size must be less than 10MB");
+        return;
+      }
+      if (!file.type.startsWith("image/")) {
+        alert("Please upload an image file");
+        return;
+      }
+      setCategoryImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCategoryImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCategorySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!isFirebaseConfigured() || !db) {
+      alert("Firebase is not configured");
+      return;
+    }
+
+    if (!categoryFormData.name.trim()) {
+      alert("Category name is required");
+      return;
+    }
+
+    // Check for unique category name
+    const duplicateCategory = categories.find(
+      (c) =>
+        c.name.toLowerCase().trim() ===
+          categoryFormData.name.toLowerCase().trim() &&
+        c.id !== editingCategory?.id,
+    );
+    if (duplicateCategory) {
+      alert(
+        `A category with the name "${categoryFormData.name}" already exists.`,
+      );
+      return;
+    }
+
+    if (!editingCategory && !categoryImageFile) {
+      alert("Please upload a category image");
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      let imageUrl = editingCategory?.image || "";
+
+      if (categoryImageFile) {
+        imageUrl = await uploadImage(categoryImageFile);
+      }
+
+      // Auto-generate slug from name if not editing
+      const slug =
+        categoryFormData.slug ||
+        categoryFormData.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "");
+
+      const categoryData = {
+        name: categoryFormData.name,
+        slug: slug,
+        image: imageUrl,
+        displayOrder: categoryFormData.displayOrder,
+        isActive: categoryFormData.isActive,
+        updatedAt: new Date(),
+      };
+
+      if (editingCategory) {
+        await updateDoc(
+          doc(db, "categories", editingCategory.id),
+          categoryData,
+        );
+        alert("Category updated successfully!");
+      } else {
+        await addDoc(collection(db, "categories"), {
+          ...categoryData,
+          createdAt: new Date(),
+        });
+        alert("Category created successfully!");
+      }
+
+      resetCategoryForm();
+      fetchCategories();
+    } catch (error) {
+      console.error("Error saving category:", error);
+      alert("Failed to save category");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleEditCategory = (category: Category) => {
+    setEditingCategory(category);
+    setCategoryFormData({
+      name: category.name,
+      slug: category.slug,
+      image: category.image,
+      displayOrder: category.displayOrder,
+      isActive: category.isActive,
+    });
+    setCategoryImagePreview(category.image);
+    setShowForm(true);
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this category?")) return;
+
+    if (!db) {
+      alert("Database not initialized");
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, "categories", id));
+      alert("Category deleted successfully!");
+      fetchCategories();
+    } catch (error) {
+      console.error("Error deleting category:", error);
+      alert("Failed to delete category");
+    }
+  };
+
+  const resetCategoryForm = () => {
+    setCategoryFormData({
+      name: "",
+      slug: "",
+      image: "",
+      displayOrder: 0,
+      isActive: true,
+    });
+    setCategoryImageFile(null);
+    setCategoryImagePreview("");
+    setEditingCategory(null);
+    setShowForm(false);
+  };
+
   const handleLogout = () => {
     logout();
     router.push("/admin/login");
@@ -436,13 +685,22 @@ export default function AdminDashboard() {
                   Admin Dashboard
                 </h1>
               </div>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-apple-gray-700 hover:bg-apple-gray-100 rounded-lg transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                Logout
-              </button>
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/admin/data-codes"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-apple-gray-700 hover:bg-apple-gray-100 rounded-lg transition-colors"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  Data Codes
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-apple-gray-700 hover:bg-apple-gray-100 rounded-lg transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
         </header>
@@ -456,6 +714,7 @@ export default function AdminDashboard() {
                 setShowForm(false);
                 resetForm();
                 resetSectionForm();
+                resetCategoryForm();
               }}
               className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
                 activeTab === "products"
@@ -472,6 +731,7 @@ export default function AdminDashboard() {
                 setShowForm(false);
                 resetForm();
                 resetSectionForm();
+                resetCategoryForm();
               }}
               className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
                 activeTab === "sections"
@@ -488,6 +748,7 @@ export default function AdminDashboard() {
                 setShowForm(false);
                 resetForm();
                 resetSectionForm();
+                resetCategoryForm();
               }}
               className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
                 activeTab === "orders"
@@ -497,6 +758,57 @@ export default function AdminDashboard() {
             >
               <ShoppingCart className="w-5 h-5" />
               Orders
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("categories");
+                setShowForm(false);
+                resetForm();
+                resetSectionForm();
+                resetCategoryForm();
+              }}
+              className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
+                activeTab === "categories"
+                  ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
+                  : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
+              }`}
+            >
+              <LayoutGrid className="w-5 h-5" />
+              Categories
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("emails");
+                setShowForm(false);
+                resetForm();
+                resetSectionForm();
+                resetCategoryForm();
+              }}
+              className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
+                activeTab === "emails"
+                  ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
+                  : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
+              }`}
+            >
+              <Mail className="w-5 h-5" />
+              Emails
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("dataCodes");
+                setShowForm(false);
+                resetForm();
+                resetSectionForm();
+                resetCategoryForm();
+              }}
+              className={`flex items-center gap-2 px-6 py-3 font-semibold rounded-lg transition-all ${
+                activeTab === "dataCodes"
+                  ? "bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white shadow-lg"
+                  : "bg-white text-apple-gray-700 hover:bg-apple-gray-50"
+              }`}
+            >
+              <KeyRound className="w-5 h-5" />
+              Data Codes
             </button>
           </div>
 
@@ -653,29 +965,59 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </>
+            ) : activeTab === "dataCodes" ? (
+              <>
+                <div className="bg-white rounded-xl p-6 shadow-sm">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-100 rounded-lg">
+                      <KeyRound className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-apple-gray-600">Data Codes</p>
+                      <p className="text-2xl font-bold text-apple-gray-900">
+                        Secure Access
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl p-6 shadow-sm">
+                  <p className="text-sm text-apple-gray-600">Quick Actions</p>
+                  <p className="text-lg font-semibold text-apple-gray-900">
+                    Manage Lodge Internet codes
+                  </p>
+                </div>
+                <div className="bg-white rounded-xl p-6 shadow-sm">
+                  <p className="text-sm text-apple-gray-600">Plans</p>
+                  <p className="text-2xl font-bold text-apple-gray-900">
+                    3 & 5 Users
+                  </p>
+                </div>
+              </>
             ) : null}
           </div>
 
           {/* Add Button */}
-          {activeTab !== "orders" && (
-            <div className="mb-6">
-              <button
-                onClick={() => setShowForm(!showForm)}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white font-semibold rounded-lg hover:opacity-90 transition-opacity"
-              >
-                {showForm ? (
-                  <X className="w-5 h-5" />
-                ) : (
-                  <Plus className="w-5 h-5" />
-                )}
-                {showForm
-                  ? "Cancel"
-                  : activeTab === "products"
-                  ? "Add New Product"
-                  : "Add New Section"}
-              </button>
-            </div>
-          )}
+          {activeTab !== "orders" &&
+            activeTab !== "categories" &&
+            activeTab !== "dataCodes" && (
+              <div className="mb-6">
+                <button
+                  onClick={() => setShowForm(!showForm)}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white font-semibold rounded-lg hover:opacity-90 transition-opacity"
+                >
+                  {showForm ? (
+                    <X className="w-5 h-5" />
+                  ) : (
+                    <Plus className="w-5 h-5" />
+                  )}
+                  {showForm
+                    ? "Cancel"
+                    : activeTab === "products"
+                      ? "Add New Product"
+                      : "Add New Section"}
+                </button>
+              </div>
+            )}
 
           {/* Product Form */}
           {showForm && activeTab === "products" && (
@@ -771,7 +1113,51 @@ export default function AdminDashboard() {
                         })
                       }
                       className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="For showing discount"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                      Stock Quantity *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData.stockQuantity}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          stockQuantity: Number(e.target.value),
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                    <p className="text-xs text-apple-gray-500 mt-1">
+                      Decreases automatically on purchase. Set to 0 for out of
+                      stock.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                      Available Date - Optional
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={formData.availableDate}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          availableDate: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-apple-gray-500 mt-1">
+                      For coming soon products with countdown timer
+                    </p>
                   </div>
 
                   <div>
@@ -885,8 +1271,8 @@ export default function AdminDashboard() {
                     {uploading
                       ? "Saving..."
                       : editingProduct
-                      ? "Update Product"
-                      : "Add Product"}
+                        ? "Update Product"
+                        : "Add Product"}
                   </button>
 
                   <button
@@ -1249,10 +1635,16 @@ export default function AdminDashboard() {
                           Total
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
-                          Status
+                          Payment Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
+                          Order Status
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
                           Date
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
+                          Actions
                         </th>
                       </tr>
                     </thead>
@@ -1278,7 +1670,7 @@ export default function AdminDashboard() {
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-gray-900">
                             {order.items.reduce(
                               (sum, item) => sum + item.quantity,
-                              0
+                              0,
                             )}{" "}
                             items
                           </td>
@@ -1291,15 +1683,43 @@ export default function AdminDashboard() {
                                 order.paymentStatus === "paid"
                                   ? "bg-green-100 text-green-800"
                                   : order.paymentStatus === "pending"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-red-100 text-red-800"
+                                    ? "bg-yellow-100 text-yellow-800"
+                                    : "bg-red-100 text-red-800"
                               }`}
                             >
                               {order.paymentStatus.toUpperCase()}
                             </span>
                           </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <select
+                              value={order.orderStatus}
+                              onChange={(e) =>
+                                handleOrderStatusChange(
+                                  order.id,
+                                  e.target.value as Order["orderStatus"],
+                                )
+                              }
+                              className="text-sm border border-apple-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="packing">Packing</option>
+                              <option value="on-the-way">On the Way</option>
+                              <option value="delivered-station">
+                                Delivered to Station
+                              </option>
+                              <option value="delivered-doorstep">
+                                Delivered to Doorstep
+                              </option>
+                            </select>
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-gray-600">
                             {order.createdAt.toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <div className="text-xs text-apple-gray-500">
+                              {order.deliveryMethod === "door-to-door"
+                                ? "🚪 Door-to-Door"
+                                : "📦 Station Pickup"}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1307,6 +1727,534 @@ export default function AdminDashboard() {
                   </table>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Categories Tab */}
+          {activeTab === "categories" && (
+            <>
+              {/* Add Category Button */}
+              {!loading && (
+                <div className="mb-6 flex justify-end">
+                  <button
+                    onClick={() => {
+                      if (showForm) {
+                        resetCategoryForm();
+                      } else {
+                        setShowForm(true);
+                      }
+                    }}
+                    className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white font-semibold rounded-lg shadow-lg hover:opacity-90 transition-opacity"
+                  >
+                    {showForm ? (
+                      <X className="w-5 h-5" />
+                    ) : (
+                      <Plus className="w-5 h-5" />
+                    )}
+                    {showForm ? "Cancel" : "Add New Category"}
+                  </button>
+                </div>
+              )}
+
+              {/* Category Form */}
+              {showForm && activeTab === "categories" && (
+                <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
+                  <h2 className="text-xl font-bold text-apple-gray-900 mb-6">
+                    {editingCategory ? "Edit Category" : "Add New Category"}
+                  </h2>
+
+                  <form onSubmit={handleCategorySubmit} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                          Category Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={categoryFormData.name}
+                          onChange={(e) =>
+                            setCategoryFormData({
+                              ...categoryFormData,
+                              name: e.target.value,
+                            })
+                          }
+                          className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                          Slug (URL-friendly name)
+                        </label>
+                        <input
+                          type="text"
+                          value={categoryFormData.slug}
+                          onChange={(e) =>
+                            setCategoryFormData({
+                              ...categoryFormData,
+                              slug: e.target.value,
+                            })
+                          }
+                          className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Auto-generated if empty"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                          Display Order
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={categoryFormData.displayOrder}
+                          onChange={(e) =>
+                            setCategoryFormData({
+                              ...categoryFormData,
+                              displayOrder: Number(e.target.value),
+                            })
+                          }
+                          className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div className="flex items-center">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={categoryFormData.isActive}
+                            onChange={(e) =>
+                              setCategoryFormData({
+                                ...categoryFormData,
+                                isActive: e.target.checked,
+                              })
+                            }
+                            className="w-4 h-4 text-blue-600 border-apple-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <span className="text-sm font-medium text-apple-gray-700">
+                            Active (Visible on site)
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                        Category Image *
+                      </label>
+                      <div className="flex items-start gap-4">
+                        <label className="flex-1 cursor-pointer">
+                          <div className="border-2 border-dashed border-apple-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition-colors">
+                            <Upload className="w-8 h-8 text-apple-gray-400 mx-auto mb-2" />
+                            <p className="text-sm text-apple-gray-600">
+                              Click to upload category image
+                            </p>
+                            <p className="text-xs text-apple-gray-500 mt-1">
+                              PNG, JPG up to 10MB
+                            </p>
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleCategoryImageChange}
+                            className="hidden"
+                          />
+                        </label>
+
+                        {categoryImagePreview && (
+                          <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-apple-gray-200">
+                            <img
+                              src={categoryImagePreview}
+                              alt="Preview"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <button
+                        type="submit"
+                        disabled={uploading}
+                        className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white font-semibold rounded-lg shadow-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                      >
+                        {uploading
+                          ? "Uploading..."
+                          : editingCategory
+                            ? "Update Category"
+                            : "Add Category"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetCategoryForm}
+                        className="px-6 py-3 border border-apple-gray-300 text-apple-gray-700 font-semibold rounded-lg hover:bg-apple-gray-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Categories List */}
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-apple-gray-200">
+                  <h2 className="text-lg font-bold text-apple-gray-900">
+                    All Categories ({categories.length})
+                  </h2>
+                </div>
+
+                {categories.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <LayoutGrid className="w-16 h-16 text-apple-gray-300 mx-auto mb-4" />
+                    <p className="text-apple-gray-600">
+                      No categories yet. Create your first category!
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-apple-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
+                            Image
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
+                            Name
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
+                            Slug
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
+                            Display Order
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
+                            Status
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-apple-gray-200">
+                        {categories.map((category) => (
+                          <tr key={category.id}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <img
+                                src={category.image}
+                                alt={category.name}
+                                className="w-12 h-12 rounded-full object-cover"
+                              />
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm font-medium text-apple-gray-900">
+                                {category.name}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm text-apple-gray-600 font-mono">
+                                {category.slug}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-gray-900">
+                              {category.displayOrder}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  category.isActive
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-gray-100 text-gray-800"
+                                }`}
+                              >
+                                {category.isActive ? "Active" : "Inactive"}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <button
+                                onClick={() => handleEditCategory(category)}
+                                className="text-blue-600 hover:text-blue-900 mr-4"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleDeleteCategory(category.id)
+                                }
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Emails Tab */}
+          {activeTab === "emails" && (
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h2 className="text-2xl font-bold text-apple-gray-900 mb-6">
+                Email Management
+              </h2>
+
+              {/* Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Mail className="w-6 h-6 text-purple-600" />
+                    <span className="text-sm font-medium text-purple-900">
+                      Promotional
+                    </span>
+                  </div>
+                  <p className="text-3xl font-bold text-purple-900">
+                    {/* This will be populated from Firestore */}
+                    -- <span className="text-lg">users</span>
+                  </p>
+                  <p className="text-xs text-purple-700 mt-1">
+                    Opted-in for promos
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Package className="w-6 h-6 text-green-600" />
+                    <span className="text-sm font-medium text-green-900">
+                      Stock Alerts
+                    </span>
+                  </div>
+                  <p className="text-3xl font-bold text-green-900">
+                    -- <span className="text-lg">users</span>
+                  </p>
+                  <p className="text-xs text-green-700 mt-1">
+                    Watching products
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Package className="w-6 h-6 text-orange-600" />
+                    <span className="text-sm font-medium text-orange-900">
+                      Coming Soon
+                    </span>
+                  </div>
+                  <p className="text-3xl font-bold text-orange-900">
+                    -- <span className="text-lg">users</span>
+                  </p>
+                  <p className="text-xs text-orange-700 mt-1">
+                    Opted-in for new products
+                  </p>
+                </div>
+              </div>
+
+              {/* Promotional Email Composer */}
+              <div className="border border-apple-gray-200 rounded-xl p-6">
+                <h3 className="text-lg font-semibold text-apple-gray-900 mb-4 flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-blue-600" />
+                  Send Promotional Email
+                </h3>
+
+                <div className="space-y-4">
+                  {/* Email Title */}
+                  <div>
+                    <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                      Email Subject *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Exclusive Weekend Sale - 30% Off!"
+                      className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  {/* Email Message */}
+                  <div>
+                    <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                      Email Message *
+                    </label>
+                    <textarea
+                      rows={8}
+                      placeholder="Write your promotional message here... You can use HTML for formatting."
+                      className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                    />
+                    <p className="mt-1 text-xs text-apple-gray-500">
+                      Tip: Use HTML tags for formatting (e.g., &lt;p&gt;,
+                      &lt;strong&gt;, &lt;br/&gt;)
+                    </p>
+                  </div>
+
+                  {/* Image URL */}
+                  <div>
+                    <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                      Image URL (optional)
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://example.com/promo-image.jpg"
+                      className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* CTA Text */}
+                    <div>
+                      <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                        Button Text (optional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g., Shop Now"
+                        className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+
+                    {/* CTA URL */}
+                    <div>
+                      <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                        Button Link (optional)
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://your-store.com/sale"
+                        className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Send Button */}
+                  <div className="flex gap-4 pt-4">
+                    <button
+                      className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:from-blue-600 hover:to-purple-700 transition-all flex items-center justify-center gap-2"
+                      onClick={() => {
+                        alert(
+                          "Email sending functionality - Connect to /api/email/promotional",
+                        );
+                      }}
+                    >
+                      <Mail className="w-5 h-5" />
+                      Send to All Opted-In Users
+                    </button>
+                    <button
+                      className="px-6 py-3 border border-apple-gray-300 rounded-lg font-medium text-apple-gray-700 hover:bg-apple-gray-50 transition-colors"
+                      onClick={() => {
+                        alert(
+                          "Preview functionality - Opens email preview in new window",
+                        );
+                      }}
+                    >
+                      Preview
+                    </button>
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm text-blue-900">
+                      <strong>Note:</strong> This email will be sent to all
+                      users who opted-in for promotional emails. Recipients can
+                      manage their preferences at any time.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                <div className="border border-apple-gray-200 rounded-xl p-4 hover:border-blue-500 transition-colors cursor-pointer">
+                  <h4 className="font-semibold text-apple-gray-900 mb-2">
+                    📧 Test Email Configuration
+                  </h4>
+                  <p className="text-sm text-apple-gray-600 mb-3">
+                    Send a test email to verify your setup is working correctly.
+                  </p>
+                  <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                    Send Test Email →
+                  </button>
+                </div>
+
+                <div className="border border-apple-gray-200 rounded-xl p-4 hover:border-green-500 transition-colors cursor-pointer">
+                  <h4 className="font-semibold text-apple-gray-900 mb-2">
+                    📊 Email Stats
+                  </h4>
+                  <p className="text-sm text-apple-gray-600 mb-3">
+                    View detailed statistics about your email campaigns.
+                  </p>
+                  <button className="text-sm text-green-600 hover:text-green-700 font-medium">
+                    View Statistics →
+                  </button>
+                </div>
+              </div>
+
+              {/* Setup Instructions */}
+              <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                <h4 className="font-semibold text-yellow-900 mb-2">
+                  ⚙️ Email Setup Required
+                </h4>
+                <p className="text-sm text-yellow-800 mb-2">
+                  To enable email sending, configure your Google App Password in{" "}
+                  <code className="bg-yellow-100 px-1 rounded">.env.local</code>
+                  :
+                </p>
+                <pre className="bg-yellow-100 p-3 rounded text-xs text-yellow-900 overflow-x-auto">
+                  {`EMAIL_USER=your-gmail@gmail.com
+EMAIL_APP_PASSWORD=your-16-char-app-password
+EMAIL_FROM=your-gmail@gmail.com
+NEXT_PUBLIC_BASE_URL=http://localhost:3000`}
+                </pre>
+                <p className="text-xs text-yellow-700 mt-2">
+                  See <code>EMAIL_SYSTEM_GUIDE.md</code> for detailed setup
+                  instructions.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Data Codes Tab */}
+          {activeTab === "dataCodes" && (
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-apple-gray-900">
+                    Data Codes
+                  </h2>
+                  <p className="text-sm text-apple-gray-600">
+                    Manage Lodge Internet access codes securely.
+                  </p>
+                </div>
+                <Link
+                  href="/admin/data-codes"
+                  className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white font-semibold rounded-lg hover:opacity-90 transition-opacity"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  Open Data Codes
+                </Link>
+              </div>
+
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <div className="border border-apple-gray-200 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-apple-gray-900 mb-2">
+                    How it works
+                  </h3>
+                  <p className="text-sm text-apple-gray-600">
+                    Choose a data plan, add codes one at a time, and see masked
+                    codes appear instantly.
+                  </p>
+                </div>
+                <div className="border border-apple-gray-200 rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-apple-gray-900 mb-2">
+                    Security
+                  </h3>
+                  <p className="text-sm text-apple-gray-600">
+                    Codes are encrypted and hashed. Only masked values appear in
+                    the dashboard.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
         </div>

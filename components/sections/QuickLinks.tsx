@@ -7,7 +7,7 @@ type QuickLink = {
 };
 
 const quickLinks: QuickLink[] = [
-  { title: "Order Status", href: "/order-status" },
+  { title: "Order Status", href: "/orders" },
   { title: "Shopping Help", href: "/shopping-help" },
   { title: "Returns", href: "/returns" },
   { title: "Your Saves", href: "/saves" },

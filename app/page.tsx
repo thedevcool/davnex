@@ -2,9 +2,11 @@
 
 import { useEffect, useState, Suspense } from "react";
 import HeroBanner from "@/components/sections/HeroBanner";
-import ProductNavigation from "@/components/sections/ProductNavigation";
+import CategoryNavigation from "@/components/CategoryNavigation";
+import ComingSoonSection from "@/components/sections/ComingSoonSection";
 import LatestSection from "@/components/sections/LatestSection";
 import DynamicSection from "@/components/sections/DynamicSection";
+import RecentlyViewed from "@/components/RecentlyViewed";
 import QuickLinks from "@/components/sections/QuickLinks";
 import { getActiveSections } from "@/lib/sections";
 import { Section } from "@/types";
@@ -59,7 +61,10 @@ function HomeContent() {
   return (
     <>
       <HeroBanner />
-      <ProductNavigation />
+      <CategoryNavigation />
+
+      {/* Coming Soon Products */}
+      <ComingSoonSection />
 
       {/* The Latest Section - Always shows first */}
       <LatestSection backgroundColor="bg-white" />
@@ -83,6 +88,9 @@ function HomeContent() {
           </p>
         </div>
       )}
+
+      {/* Recently Viewed Products */}
+      <RecentlyViewed />
 
       <QuickLinks />
     </>

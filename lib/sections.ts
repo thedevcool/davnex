@@ -19,7 +19,6 @@ export async function getActiveSections(): Promise<Section[]> {
   }
 
   try {
-    console.log("Fetching active sections from Firebase...");
     // Fetch all sections and filter/sort in JavaScript to avoid composite index requirement
     const q = query(collection(db, "sections"));
     const querySnapshot = await getDocs(q);
@@ -35,10 +34,6 @@ export async function getActiveSections(): Promise<Section[]> {
       .filter((section) => section.isActive === true)
       .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
 
-    console.log(
-      `Found ${activeSections.length} active sections:`,
-      activeSections.map((s) => s.name)
-    );
     return activeSections;
   } catch (error) {
     console.error("Error fetching active sections:", error);
@@ -71,6 +66,8 @@ export async function getProductsBySection(
       ...doc.data(),
       createdAt: doc.data().createdAt?.toDate(),
       updatedAt: doc.data().updatedAt?.toDate(),
+      availableDate: doc.data().availableDate?.toDate(),
+      restockDate: doc.data().restockDate?.toDate(),
     })) as Product[];
 
     // Filter for in-stock, sort by createdAt, and limit
@@ -112,6 +109,8 @@ export async function getAllProducts(
       ...doc.data(),
       createdAt: doc.data().createdAt?.toDate(),
       updatedAt: doc.data().updatedAt?.toDate(),
+      availableDate: doc.data().availableDate?.toDate(),
+      restockDate: doc.data().restockDate?.toDate(),
     })) as Product[];
 
     // Filter for in-stock, sort by createdAt, and limit

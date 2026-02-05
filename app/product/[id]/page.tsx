@@ -5,17 +5,18 @@ import { useParams, useRouter } from "next/navigation";
 import {
   doc,
   getDoc,
-  collection,
-  query,
-  where,
-  getDocs,
-  limit,
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 import { Product } from "@/types";
 import { useCartStore } from "@/store/cartStore";
 import { useUserStore } from "@/store/userStore";
+import { useRecentlyViewed } from "@/hooks/useRecentlyViewed";
 import AuthModal from "@/components/AuthModal";
+import RelatedProducts from "@/components/RelatedProducts";
+import ProductBadge from "@/components/ProductBadge";
+import PriceDisplay from "@/components/PriceDisplay";
+import CountdownTimer from "@/components/CountdownTimer";
+import { isProductAvailable } from "@/lib/productUtils";
 import {
   ShoppingBag,
   Check,
@@ -30,7 +31,6 @@ export default function ProductPage() {
   const params = useParams();
   const router = useRouter();
   const [product, setProduct] = useState<Product | null>(null);
-  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
   const [addedToCart, setAddedToCart] = useState(false);
@@ -38,6 +38,7 @@ export default function ProductPage() {
 
   const { addItem } = useCartStore();
   const { user } = useUserStore();
+  const { addToRecentlyViewed } = useRecentlyViewed();
 
   useEffect(() => {
     if (params.id) {
@@ -62,10 +63,13 @@ export default function ProductPage() {
           ...docSnap.data(),
           createdAt: docSnap.data().createdAt?.toDate(),
           updatedAt: docSnap.data().updatedAt?.toDate(),
+          availableDate: docSnap.data().availableDate?.toDate(),
+          restockDate: docSnap.data().restockDate?.toDate(),
         } as Product;
 
         setProduct(productData);
-        fetchRelatedProducts(productData.category, id);
+        // Add to recently viewed
+        addToRecentlyViewed(productData);
       } else {
         console.error("Product not found");
         router.push("/");
@@ -75,33 +79,6 @@ export default function ProductPage() {
       router.push("/");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchRelatedProducts = async (category: string, currentId: string) => {
-    if (!isFirebaseConfigured() || !db) {
-      return;
-    }
-
-    try {
-      const q = query(
-        collection(db, "products"),
-        where("category", "==", category),
-        limit(4)
-      );
-      const querySnapshot = await getDocs(q);
-      const products = querySnapshot.docs
-        .filter((doc) => doc.id !== currentId)
-        .map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate(),
-          updatedAt: doc.data().updatedAt?.toDate(),
-        })) as Product[];
-
-      setRelatedProducts(products);
-    } catch (error) {
-      console.error("Error fetching related products:", error);
     }
   };
 
@@ -195,27 +172,28 @@ export default function ProductPage() {
 
           {/* Details */}
           <div>
-            {product.badge && (
-              <span className="inline-block px-3 py-1 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white text-sm font-semibold rounded-full mb-4">
-                {product.badge}
-              </span>
-            )}
+            <ProductBadge product={product} />
 
             <h1 className="text-4xl font-bold text-apple-gray-900 mb-4">
               {product.name}
             </h1>
 
-            <div className="flex items-center gap-3 mb-6">
-              <span className="text-3xl font-bold text-apple-gray-900">
-                ₦{product.price.toLocaleString()}
-              </span>
-              {product.originalPrice &&
-                product.originalPrice > product.price && (
-                  <span className="text-xl text-apple-gray-500 line-through">
-                    ₦{product.originalPrice.toLocaleString()}
-                  </span>
-                )}
-            </div>
+            <PriceDisplay product={product} className="text-3xl mb-6" />
+
+            {/* Countdown Timer for Coming Soon Products */}
+            {product.availableDate && new Date(product.availableDate) > new Date() && (
+              <div className="mb-6">
+                <CountdownTimer 
+                  availableDate={new Date(product.availableDate)} 
+                  onCountdownComplete={() => {
+                    // Refresh product data when countdown completes
+                    if (params.id) {
+                      fetchProduct(params.id as string);
+                    }
+                  }}
+                />
+              </div>
+            )}
 
             <div className="mb-8">
               <p className="text-apple-gray-600 leading-relaxed">
@@ -225,13 +203,18 @@ export default function ProductPage() {
 
             {/* Stock Status */}
             <div className="mb-8">
-              {product.inStock ? (
+              {product.stockQuantity === 0 ? (
+                <div className="text-red-600 font-medium">Out of Stock</div>
+              ) : product.stockQuantity <= 5 ? (
+                <div className="flex items-center gap-2 text-orange-600">
+                  <Package className="w-5 h-5" />
+                  <span className="font-medium">Only {product.stockQuantity} left in stock!</span>
+                </div>
+              ) : (
                 <div className="flex items-center gap-2 text-green-600">
                   <Check className="w-5 h-5" />
                   <span className="font-medium">In Stock</span>
                 </div>
-              ) : (
-                <div className="text-red-600 font-medium">Out of Stock</div>
               )}
             </div>
 
@@ -239,7 +222,7 @@ export default function ProductPage() {
             <div className="space-y-4 mb-8">
               <button
                 onClick={handleAddToCart}
-                disabled={!product.inStock}
+                disabled={!isProductAvailable(product)}
                 className="w-full py-4 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white font-semibold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {addedToCart ? (
@@ -247,6 +230,12 @@ export default function ProductPage() {
                     <Check className="w-5 h-5" />
                     Added to Cart!
                   </>
+                ) : !isProductAvailable(product) ? (
+                  product.availableDate && new Date(product.availableDate) > new Date() ? (
+                    "Coming Soon"
+                  ) : (
+                    "Out of Stock"
+                  )
                 ) : (
                   <>
                     <ShoppingBag className="w-5 h-5" />
@@ -309,40 +298,10 @@ export default function ProductPage() {
             </div>
           </div>
         </div>
-
-        {/* Related Products */}
-        {relatedProducts.length > 0 && (
-          <div className="mt-16">
-            <h2 className="text-2xl font-bold text-apple-gray-900 mb-8">
-              You might also like
-            </h2>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              {relatedProducts.map((relatedProduct) => (
-                <Link
-                  key={relatedProduct.id}
-                  href={`/product/${relatedProduct.id}`}
-                  className="group"
-                >
-                  <div className="bg-apple-gray-50 rounded-xl p-6 mb-4 group-hover:bg-apple-gray-100 transition-colors">
-                    <img
-                      src={relatedProduct.image}
-                      alt={relatedProduct.name}
-                      className="w-full h-40 object-contain"
-                    />
-                  </div>
-                  <h3 className="font-semibold text-apple-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
-                    {relatedProduct.name}
-                  </h3>
-                  <p className="text-apple-gray-900 font-medium">
-                    ₦{relatedProduct.price.toLocaleString()}
-                  </p>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Related Products */}
+      {product && <RelatedProducts currentProduct={product} maxItems={8} />}
 
       {/* Auth Modal */}
       <AuthModal

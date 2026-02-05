@@ -54,6 +54,8 @@ export const useProducts = (filters?: {
           ...doc.data(),
           createdAt: doc.data().createdAt?.toDate(),
           updatedAt: doc.data().updatedAt?.toDate(),
+          availableDate: doc.data().availableDate?.toDate(),
+          restockDate: doc.data().restockDate?.toDate(),
         })) as Product[];
 
         setProducts(productsData);

@@ -4,14 +4,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/cartStore";
 import { useUserStore } from "@/store/userStore";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 import { ArrowLeft, CreditCard, Package, Check } from "lucide-react";
 import Link from "next/link";
 
 declare global {
   interface Window {
-    PaystackPop: any;
+    PaystackPop?: any;
   }
 }
 
@@ -29,6 +29,9 @@ export default function CheckoutPage() {
     city: "",
     state: "",
   });
+
+  const [deliveryMethod, setDeliveryMethod] = useState<"door-to-door" | "station-pickup">("station-pickup");
+  const deliveryFee = deliveryMethod === "door-to-door" ? 500 : 0;
 
   const [loading, setLoading] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
@@ -55,6 +58,10 @@ export default function CheckoutPage() {
     });
   };
 
+  const getFinalTotal = () => {
+    return getTotal() + deliveryFee;
+  };
+
   const createOrder = async (
     reference: string,
     status: "paid" | "pending" | "failed"
@@ -74,18 +81,47 @@ export default function CheckoutPage() {
           price: item.product.price,
           quantity: item.quantity,
         })),
-        total: getTotal(),
+        total: getFinalTotal(),
+        deliveryMethod,
+        deliveryFee,
         customerName: `${formData.firstName} ${formData.lastName}`,
         customerEmail: formData.email,
         customerPhone: formData.phone,
         shippingAddress: `${formData.address}, ${formData.city}, ${formData.state}`,
         paymentStatus: status,
+        orderStatus: "packing", // Default status when order is created
         paystackReference: reference,
         createdAt: new Date(),
       };
 
       await addDoc(collection(db, "orders"), orderData);
       console.log("✅ Order saved successfully:", reference);
+
+      // Update stock quantities for each product in the order
+      if (status === "paid") {
+        for (const item of items) {
+          try {
+            const productRef = doc(db, "products", item.product.id);
+            const productSnap = await getDoc(productRef);
+            
+            if (productSnap.exists()) {
+              const currentStock = productSnap.data().stockQuantity || 0;
+              const newStock = Math.max(0, currentStock - item.quantity);
+              
+              await updateDoc(productRef, {
+                stockQuantity: newStock,
+                inStock: newStock > 0,
+                updatedAt: new Date(),
+              });
+              
+              console.log(`✅ Updated stock for ${item.product.name}: ${currentStock} -> ${newStock}`);
+            }
+          } catch (stockError) {
+            console.error(`❌ Error updating stock for product ${item.product.id}:`, stockError);
+            // Continue processing other products even if one fails
+          }
+        }
+      }
     } catch (error) {
       console.error("❌ Error creating order:", error);
       throw error;
@@ -144,7 +180,7 @@ export default function CheckoutPage() {
           const handler = window.PaystackPop.setup({
             key: paystackKey,
             email: formData.email,
-            amount: getTotal() * 100, // Convert to kobo
+            amount: getFinalTotal() * 100, // Convert to kobo (includes delivery fee)
             currency: "NGN",
             ref: "DVX" + Math.floor(Math.random() * 1000000000 + 1),
             metadata: {
@@ -158,6 +194,11 @@ export default function CheckoutPage() {
                   display_name: "Phone Number",
                   variable_name: "phone_number",
                   value: formData.phone,
+                },
+                {
+                  display_name: "Delivery Method",
+                  variable_name: "delivery_method",
+                  value: deliveryMethod === "door-to-door" ? "Door-to-Door Delivery" : "Station Pickup",
                 },
               ],
             },
@@ -374,6 +415,59 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
+              {/* Delivery Method */}
+              <div className="bg-white rounded-xl p-6 shadow-sm">
+                <h2 className="text-xl font-bold text-apple-gray-900 mb-6">
+                  Delivery Method
+                </h2>
+
+                <div className="space-y-4">
+                  <label className="flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+                    <input
+                      type="radio"
+                      name="deliveryMethod"
+                      value="station-pickup"
+                      checked={deliveryMethod === "station-pickup"}
+                      onChange={(e) => setDeliveryMethod(e.target.value as "station-pickup")}
+                      className="mt-1 w-4 h-4 text-blue-600"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-semibold text-apple-gray-900">
+                          Station Pickup
+                        </span>
+                        <span className="font-bold text-green-600">FREE</span>
+                      </div>
+                      <p className="text-sm text-apple-gray-600">
+                        Pick up your order at our nearest pickup station
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+                    <input
+                      type="radio"
+                      name="deliveryMethod"
+                      value="door-to-door"
+                      checked={deliveryMethod === "door-to-door"}
+                      onChange={(e) => setDeliveryMethod(e.target.value as "door-to-door")}
+                      className="mt-1 w-4 h-4 text-blue-600"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-semibold text-apple-gray-900">
+                          Door-to-Door Delivery
+                        </span>
+                        <span className="font-bold text-apple-gray-900">₦500</span>
+                      </div>
+                      <p className="text-sm text-apple-gray-600">
+                        Get your order delivered right to your doorstep
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 disabled={loading}
@@ -427,12 +521,19 @@ export default function CheckoutPage() {
                   <span>₦{getTotal().toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-apple-gray-600">
-                  <span>Shipping</span>
-                  <span className="text-green-600 font-medium">FREE</span>
+                  <span>
+                    Delivery Fee
+                    {deliveryMethod === "door-to-door" && (
+                      <span className="text-xs ml-1">(Door-to-Door)</span>
+                    )}
+                  </span>
+                  <span className={deliveryFee === 0 ? "text-green-600 font-medium" : ""}>
+                    {deliveryFee === 0 ? "FREE" : `₦${deliveryFee.toLocaleString()}`}
+                  </span>
                 </div>
-                <div className="flex justify-between text-xl font-bold text-apple-gray-900 pt-2">
+                <div className="flex justify-between text-xl font-bold text-apple-gray-900 pt-2 border-t">
                   <span>Total</span>
-                  <span>₦{getTotal().toLocaleString()}</span>
+                  <span>₦{getFinalTotal().toLocaleString()}</span>
                 </div>
               </div>
 
@@ -440,7 +541,10 @@ export default function CheckoutPage() {
                 <div className="flex items-start gap-3">
                   <Package className="w-5 h-5 text-blue-600 mt-0.5" />
                   <p className="text-sm text-apple-gray-700">
-                    Your order will be delivered within 2-5 business days
+                    {deliveryMethod === "door-to-door" 
+                      ? "Your order will be delivered to your doorstep within 2-5 business days"
+                      : "Your order will be ready for pickup at our station within 1-3 business days"
+                    }
                   </p>
                 </div>
               </div>

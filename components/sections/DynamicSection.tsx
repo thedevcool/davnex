@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Section, Product } from "@/types";
 import { getProductsBySection } from "@/lib/sections";
 import Link from "next/link";
+import ProductBadge from "@/components/ProductBadge";
+import PriceDisplay from "@/components/PriceDisplay";
 
 interface DynamicSectionProps {
   section: Section;
@@ -61,11 +63,7 @@ export default function DynamicSection({
                 className="group"
               >
                 <div className="bg-white rounded-2xl p-4 hover:shadow-xl transition-shadow duration-300">
-                  {product.badge && (
-                    <span className="inline-block px-3 py-1 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white text-xs font-semibold rounded-full mb-3">
-                      {product.badge}
-                    </span>
-                  )}
+                  <ProductBadge product={product} />
                   <div className="aspect-square mb-4 overflow-hidden rounded-lg">
                     <img
                       src={product.image}
@@ -76,17 +74,7 @@ export default function DynamicSection({
                   <h3 className="font-semibold text-apple-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
                     {product.name}
                   </h3>
-                  <div className="flex items-center gap-2">
-                    <p className="text-lg font-bold text-apple-gray-900">
-                      ₦{product.price.toLocaleString()}
-                    </p>
-                    {product.originalPrice &&
-                      product.originalPrice > product.price && (
-                        <p className="text-sm text-apple-gray-500 line-through">
-                          ₦{product.originalPrice.toLocaleString()}
-                        </p>
-                      )}
-                  </div>
+                  <PriceDisplay product={product} />
                 </div>
               </Link>
             ))}
