@@ -17,7 +17,6 @@ interface DataPurchase {
   usersCount: number;
   price: number;
   codeId: string;
-  maskedCode?: string;
   purchasedAt: Date;
   customerEmail?: string;
 }
@@ -70,8 +69,7 @@ export default function PurchaseLogsPage() {
   const filteredPurchases = purchases.filter(purchase => {
     const matchesSearch = searchTerm === "" || 
       purchase.planName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      purchase.customerEmail?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      purchase.maskedCode?.includes(searchTerm);
+      purchase.customerEmail?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesPlan = filterPlan === "all" || purchase.planName === filterPlan;
     
@@ -79,13 +77,12 @@ export default function PurchaseLogsPage() {
   });
 
   const exportToCSV = () => {
-    const headers = ["Date", "Plan Name", "Users", "Price", "Masked Code", "Customer Email"];
+    const headers = ["Date", "Plan Name", "Users", "Price", "Customer Email"];
     const rows = filteredPurchases.map(p => [
       p.purchasedAt.toLocaleDateString(),
       p.planName,
       p.usersCount,
       `₦${p.price.toFixed(2)}`,
-      p.maskedCode || "N/A",
       p.customerEmail || "N/A"
     ]);
 
@@ -182,7 +179,7 @@ export default function PurchaseLogsPage() {
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-apple-gray-400" />
                   <input
                     type="text"
-                    placeholder="Search by plan, email, or code..."
+                    placeholder="Search by plan or email..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -240,9 +237,6 @@ export default function PurchaseLogsPage() {
                         Price
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
-                        Code Used
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-apple-gray-500 uppercase tracking-wider">
                         Customer
                       </th>
                     </tr>
@@ -263,11 +257,6 @@ export default function PurchaseLogsPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
                           ₦{purchase.price.toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <code className="text-sm bg-apple-gray-100 px-2 py-1 rounded">
-                            {purchase.maskedCode || "N/A"}
-                          </code>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-apple-gray-900">
                           {purchase.customerEmail || "N/A"}
