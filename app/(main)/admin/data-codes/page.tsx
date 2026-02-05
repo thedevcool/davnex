@@ -362,20 +362,6 @@ export default function AdminDataCodesPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setShowPurchases(!showPurchases)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 rounded-lg transition-colors shadow-sm"
-                >
-                  <Receipt className="w-4 h-4" />
-                  {showPurchases ? "Hide" : "View"} Purchases
-                </button>
-                <button
-                  onClick={() => setShowFeedback(!showFeedback)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 rounded-lg transition-colors shadow-sm"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  {showFeedback ? "Hide" : "View"} Feedback
-                </button>
                 <Link
                   href="/admin/dashboard"
                   className="px-4 py-2 text-sm font-medium text-apple-gray-700 hover:bg-apple-gray-100 rounded-lg transition-colors"
@@ -395,6 +381,53 @@ export default function AdminDataCodesPage() {
         </header>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Quick Action Buttons */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <button
+              onClick={() => setShowPurchases(!showPurchases)}
+              className="flex items-center justify-between p-6 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all border-2 border-transparent hover:border-green-200"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-gradient-to-r from-green-500 to-green-600 rounded-xl">
+                  <Receipt className="w-6 h-6 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-lg font-semibold text-apple-gray-900">
+                    Purchase Logs
+                  </h3>
+                  <p className="text-sm text-apple-gray-600">
+                    {showPurchases ? "Hide" : "View"} all customer purchases
+                  </p>
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-green-600">
+                {purchases.length}
+              </div>
+            </button>
+
+            <button
+              onClick={() => setShowFeedback(!showFeedback)}
+              className="flex items-center justify-between p-6 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all border-2 border-transparent hover:border-purple-200"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl">
+                  <MessageSquare className="w-6 h-6 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-lg font-semibold text-apple-gray-900">
+                    Customer Feedback
+                  </h3>
+                  <p className="text-sm text-apple-gray-600">
+                    {showFeedback ? "Hide" : "View"} reviews & complaints
+                  </p>
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-purple-600">
+                {feedback.length}
+              </div>
+            </button>
+          </div>
+
           {/* Purchases Log Section */}
           {showPurchases && (
             <section className="bg-white rounded-2xl shadow-sm p-6 mb-8">
