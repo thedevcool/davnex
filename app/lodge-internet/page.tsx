@@ -54,7 +54,7 @@ export default function LodgeInternetPage() {
 
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId);
 
-  const handlePurchase = () => {
+  const handlePurchase = async () => {
     if (!selectedPlan) {
       setError("Please select a plan");
       return;
@@ -74,26 +74,52 @@ export default function LodgeInternetPage() {
     setPurchasing(true);
     setError("");
 
-    const handler = window.PaystackPop.setup({
-      key: paystackKey,
-      email: "adebayoayobamidavid@gmail.com",
-      amount: selectedPlan.price * 100, // Paystack expects amount in kobo
-      currency: "NGN",
-      ref: `LODGE-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      metadata: {
-        planId: selectedPlan.id,
-        planName: selectedPlan.name,
-        usersCount: selectedPlan.usersCount,
-      },
-      onClose: function () {
-        setPurchasing(false);
-      },
-      callback: function (response: any) {
-        handlePaymentSuccess(response.reference);
-      },
-    });
+    try {
+      // Check if codes are available before payment
+      const availabilityResponse = await fetch("/api/data-codes/check-availability", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          planId: selectedPlan.id,
+        }),
+      });
 
-    handler.openIframe();
+      const availabilityData = await availabilityResponse.json();
+      
+      if (!availabilityResponse.ok || !availabilityData.available) {
+        setError(`Sorry, there are no available codes for ${selectedPlan.name} at the moment. Please try another plan or check back later.`);
+        setPurchasing(false);
+        return;
+      }
+
+      // Proceed with payment if codes are available
+      const handler = window.PaystackPop.setup({
+        key: paystackKey,
+        email: "adebayoayobamidavid@gmail.com",
+        amount: selectedPlan.price * 100, // Paystack expects amount in kobo
+        currency: "NGN",
+        ref: `LODGE-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        metadata: {
+          planId: selectedPlan.id,
+          planName: selectedPlan.name,
+          usersCount: selectedPlan.usersCount,
+        },
+        onClose: function () {
+          setPurchasing(false);
+        },
+        callback: function (response: any) {
+          handlePaymentSuccess(response.reference);
+        },
+      });
+
+      handler.openIframe();
+    } catch (err: any) {
+      console.error("Error checking availability:", err);
+      setError("Failed to verify code availability. Please try again.");
+      setPurchasing(false);
+    }
   };
 
   const handlePaymentSuccess = async (reference: string) => {
