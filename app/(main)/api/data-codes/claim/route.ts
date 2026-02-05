@@ -25,6 +25,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const planId = typeof body.planId === "string" ? body.planId.trim() : "";
+    const customerEmail = typeof body.email === "string" ? body.email.trim() : "";
 
     if (!planId) {
       return NextResponse.json({ error: "Missing planId" }, { status: 400 });
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
       usersCount: planData.usersCount,
       price: planData.price,
       codeId: codeDoc.id,
+      customerEmail: customerEmail || "N/A",
       purchasedAt: new Date(),
     });
 

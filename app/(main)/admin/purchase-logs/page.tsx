@@ -84,7 +84,7 @@ export default function PurchaseLogsPage() {
       p.purchasedAt.toLocaleDateString(),
       p.planName,
       p.usersCount,
-      `$${p.price.toFixed(2)}`,
+      `₦${p.price.toFixed(2)}`,
       p.maskedCode || "N/A",
       p.customerEmail || "N/A"
     ]);
@@ -153,7 +153,7 @@ export default function PurchaseLogsPage() {
                 <div>
                   <p className="text-sm text-apple-gray-600">Total Revenue</p>
                   <p className="text-2xl font-bold text-apple-gray-900">
-                    ${totalRevenue.toFixed(2)}
+                    ₦{totalRevenue.toFixed(2)}
                   </p>
                 </div>
               </div>
@@ -262,7 +262,7 @@ export default function PurchaseLogsPage() {
                           {purchase.usersCount}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                          ${purchase.price.toFixed(2)}
+                          ₦{purchase.price.toFixed(2)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <code className="text-sm bg-apple-gray-100 px-2 py-1 rounded">

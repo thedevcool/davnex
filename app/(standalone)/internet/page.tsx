@@ -22,10 +22,23 @@ export default function LodgeInternetPage() {
   const [error, setError] = useState("");
   const [paystackLoaded, setPaystackLoaded] = useState(false);
   const [selectedDeviceCount, setSelectedDeviceCount] = useState<number>(3);
+  const [email, setEmail] = useState<string>("");
 
   useEffect(() => {
     fetchPlans();
+    // Load email from localStorage
+    const savedEmail = localStorage.getItem("userEmail");
+    if (savedEmail) {
+      setEmail(savedEmail);
+    }
   }, []);
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newEmail = e.target.value;
+    setEmail(newEmail);
+    // Save to localStorage
+    localStorage.setItem("userEmail", newEmail);
+  };
 
   const fetchPlans = async () => {
     if (!isFirebaseConfigured() || !db) {
@@ -69,6 +82,11 @@ export default function LodgeInternetPage() {
   const handlePurchase = async () => {
     if (!selectedPlan) {
       setError("Please select a plan");
+      return;
+    }
+
+    if (!email || !email.includes("@")) {
+      setError("Please enter a valid email address for receipt");
       return;
     }
 
@@ -116,7 +134,7 @@ export default function LodgeInternetPage() {
       // Proceed with payment if codes are available
       const handler = window.PaystackPop.setup({
         key: paystackKey,
-        email: "adebayoayobamidavid@gmail.com",
+        email: email,
         amount: selectedPlan.price * 100, // Paystack expects amount in kobo
         currency: "NGN",
         ref: `LODGE-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -150,6 +168,7 @@ export default function LodgeInternetPage() {
         },
         body: JSON.stringify({
           planId: selectedPlanId,
+          email: email,
         }),
       });
 
@@ -450,6 +469,20 @@ export default function LodgeInternetPage() {
                     handlePurchase();
                   }}
                 >
+                  <div className="mb-6">
+                    <label htmlFor="email" className="block text-sm text-apple-gray-700 mb-2 font-medium">
+                      Email Address (for receipt)
+                    </label>
+                    <input
+                      type="email"
+                      id="email"
+                      value={email}
+                      onChange={handleEmailChange}
+                      placeholder="your.email@example.com"
+                      required
+                      className="w-full px-4 py-4 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none text-base transition-colors"
+                    />
+                  </div>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
                     <div className="flex-1">
                       <p className="text-sm text-apple-gray-600 mb-2 font-medium uppercase tracking-wide">
@@ -465,7 +498,7 @@ export default function LodgeInternetPage() {
                     </div>
                     <button
                       type="submit"
-                      disabled={purchasing || !!revealedCode || !paystackLoaded}
+                      disabled={purchasing || !!revealedCode || !paystackLoaded || !email}
                       className="bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold px-10 py-5 rounded-2xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-2xl transform hover:-translate-y-1 text-lg whitespace-nowrap"
                     >
                       {!paystackLoaded
