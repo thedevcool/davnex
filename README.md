@@ -72,6 +72,10 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 
 # Paystack Configuration
 NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY=pk_test_your_key
+
+# Admin Authentication
+ADMIN_USERNAME=davo
+ADMIN_PASSWORD=davo
 ```
 
 3. **Run Development Server**

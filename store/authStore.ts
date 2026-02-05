@@ -4,7 +4,7 @@ import { create } from "zustand";
 
 interface AuthStore {
   isAuthenticated: boolean;
-  login: (username: string, password: string) => boolean;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
 
@@ -34,19 +34,33 @@ const deleteCookie = (name: string) => {
 export const useAuthStore = create<AuthStore>((set) => ({
   isAuthenticated: false,
 
-  login: (username: string, password: string) => {
-    // Simple hardcoded authentication
-    if (username === "davo" && password === "davo") {
-      set({ isAuthenticated: true });
-      if (typeof window !== "undefined") {
-        // Set cookie with 12 hours expiry
-        setCookie("davnex-admin", "true", 12);
-        // Keep localStorage as fallback
-        localStorage.setItem("davnex-admin", "true");
+  login: async (username: string, password: string) => {
+    try {
+      const response = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        set({ isAuthenticated: true });
+        if (typeof window !== "undefined") {
+          // Set cookie with 12 hours expiry
+          setCookie("davnex-admin", "true", 12);
+          // Keep localStorage as fallback
+          localStorage.setItem("davnex-admin", "true");
+        }
+        return true;
       }
-      return true;
+      return false;
+    } catch (error) {
+      console.error("Login error:", error);
+      return false;
     }
-    return false;
   },
 
   logout: () => {

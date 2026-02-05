@@ -19,7 +19,7 @@ export default function AdminLogin() {
     setLoading(true);
     setError("");
 
-    const success = login(username, password);
+    const success = await login(username, password);
 
     if (success) {
       router.push("/admin/dashboard");
@@ -95,12 +95,6 @@ export default function AdminLogin() {
               {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
-
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-            <p className="text-xs text-apple-gray-600 text-center">
-              Default credentials: <strong>davo</strong> / <strong>davo</strong>
-            </p>
-          </div>
         </div>
       </div>
     </div>
