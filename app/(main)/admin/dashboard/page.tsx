@@ -2242,13 +2242,22 @@ NEXT_PUBLIC_BASE_URL=http://localhost:3000`}
                     Manage Lodge Internet access codes securely.
                   </p>
                 </div>
-                <Link
-                  href="/admin/data-codes"
-                  className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white font-semibold rounded-lg hover:opacity-90 transition-opacity"
-                >
-                  <KeyRound className="w-4 h-4" />
-                  Open Data Codes
-                </Link>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Link
+                    href="/admin/data-codes"
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white font-semibold rounded-lg hover:opacity-90 transition-opacity"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    Open Data Codes
+                  </Link>
+                  <Link
+                    href="/admin/purchase-logs"
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white border-2 border-blue-500 text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-colors"
+                  >
+                    <Receipt className="w-4 h-4" />
+                    Purchase Logs
+                  </Link>
+                </div>
               </div>
 
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
