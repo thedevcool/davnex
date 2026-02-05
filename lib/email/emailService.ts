@@ -8,11 +8,11 @@ let transporter: nodemailer.Transporter | null = null;
  */
 export function initializeEmailTransporter() {
   if (!transporter) {
-    const emailUser = process.env.EMAIL_USER;
+    const emailUser = process.env.EMAIL_FROM || process.env.EMAIL_USER;
     const emailPassword = process.env.EMAIL_APP_PASSWORD;
 
     if (!emailUser || !emailPassword) {
-      console.error('Email credentials not configured. Set EMAIL_USER and EMAIL_APP_PASSWORD in .env.local');
+      console.error('Email credentials not configured. Set EMAIL_FROM and EMAIL_APP_PASSWORD in .env.local');
       return null;
     }
 

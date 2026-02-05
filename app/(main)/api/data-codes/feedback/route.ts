@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { addDoc, collection, getDocs, orderBy, query } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
+import { sendEmail } from "@/lib/email/emailService";
+import { getFeedbackNotificationEmail } from "@/lib/email/emailTemplates";
 
 // POST - Submit feedback
 export async function POST(request: Request) {
@@ -39,6 +41,29 @@ export async function POST(request: Request) {
       message: message.trim(),
       createdAt: new Date(),
     });
+
+    // Send email notification to admin
+    const adminEmail = "adebayoayobamidavid@gmail.com";
+    
+    try {
+      await sendEmail({
+        to: adminEmail,
+        subject: `New ${type === 'review' ? 'Review' : 'Complaint'} - ${planName}`,
+        html: getFeedbackNotificationEmail({
+          name: name.trim(),
+          email: email.trim(),
+          planName: planName.trim(),
+          type,
+          rating: rating || undefined,
+          message: message.trim(),
+          submittedAt: new Date().toISOString(),
+        }),
+      });
+      console.log(`Feedback notification email sent to ${adminEmail}`);
+    } catch (emailError) {
+      console.error("Failed to send feedback notification email:", emailError);
+      // Don't fail the request if email fails, just log it
+    }
 
     return NextResponse.json({
       success: true,

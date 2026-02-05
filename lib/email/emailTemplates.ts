@@ -347,3 +347,76 @@ export function getPromotionalEmail(content: {
   `;
   return getEmailTemplate(emailContent);
 }
+
+/**
+ * Feedback notification email template (for admin)
+ */
+export function getFeedbackNotificationEmail(feedback: {
+  name: string;
+  email: string;
+  planName: string;
+  type: 'review' | 'complaint';
+  rating?: number;
+  message: string;
+  submittedAt: string;
+}) {
+  const typeEmoji = feedback.type === 'review' ? '⭐' : '⚠️';
+  const typeColor = feedback.type === 'review' ? '#10b981' : '#ef4444';
+  const typeBgColor = feedback.type === 'review' ? '#d1fae5' : '#fee2e2';
+  
+  const ratingHtml = feedback.type === 'review' && feedback.rating
+    ? `
+      <div style="margin: 15px 0;">
+        <p style="margin: 0 0 5px 0; font-size: 14px; color: #86868b;">Rating</p>
+        <p style="margin: 0; font-size: 24px;">${'⭐'.repeat(feedback.rating)}${'☆'.repeat(5 - feedback.rating)}</p>
+        <p style="margin: 5px 0 0 0; font-size: 14px; color: #86868b;">${feedback.rating} out of 5 stars</p>
+      </div>
+    `
+    : '';
+
+  const emailContent = `
+    <div style="background-color: ${typeBgColor}; padding: 20px; border-radius: 8px; border-left: 4px solid ${typeColor}; margin-bottom: 30px;">
+      <h2 style="margin: 0; color: ${typeColor};">
+        ${typeEmoji} New ${feedback.type === 'review' ? 'Review' : 'Complaint'} Received
+      </h2>
+    </div>
+
+    <div style="background-color: #f5f5f7; padding: 20px; border-radius: 8px; margin: 20px 0;">
+      <h3 style="margin: 0 0 15px 0; color: #1d1d1f;">Customer Information</h3>
+      <table style="width: 100%;">
+        <tr>
+          <td style="padding: 8px 0; color: #86868b;">Name:</td>
+          <td style="padding: 8px 0; font-weight: 600;">${feedback.name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #86868b;">Email:</td>
+          <td style="padding: 8px 0;"><a href="mailto:${feedback.email}" style="color: #0071e3;">${feedback.email}</a></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #86868b;">Plan:</td>
+          <td style="padding: 8px 0; font-weight: 600;">${feedback.planName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #86868b;">Submitted:</td>
+          <td style="padding: 8px 0;">${new Date(feedback.submittedAt).toLocaleString()}</td>
+        </tr>
+      </table>
+      ${ratingHtml}
+    </div>
+
+    <div style="background-color: #ffffff; border: 2px solid #d2d2d7; padding: 20px; border-radius: 8px; margin: 20px 0;">
+      <h3 style="margin: 0 0 15px 0; color: #1d1d1f;">Message</h3>
+      <p style="margin: 0; white-space: pre-wrap; line-height: 1.6;">${feedback.message}</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <p style="font-size: 14px; color: #86868b;">
+      ${feedback.type === 'review' ? 'Consider responding to this positive feedback to build customer relationships.' : 'Please review and address this complaint as soon as possible.'}
+    </p>
+    
+    <a href="${process.env.NEXT_PUBLIC_BASE_URL}/admin/data-codes" class="button">View in Admin Dashboard</a>
+  `;
+  return getEmailTemplate(emailContent);
+}
+

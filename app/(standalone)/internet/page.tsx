@@ -405,6 +405,21 @@ export default function LodgeInternetPage() {
                 </div>
 
                 <div>
+                  <label htmlFor="feedbackEmail" className="block text-sm font-medium text-apple-gray-700 mb-2">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    id="feedbackEmail"
+                    value={email}
+                    onChange={handleEmailChange}
+                    placeholder="your.email@example.com"
+                    required
+                    className="w-full px-4 py-3 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none text-base transition-colors"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-sm font-medium text-apple-gray-700 mb-2">
                     Plan Purchased
                   </label>
