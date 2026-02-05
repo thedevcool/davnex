@@ -46,7 +46,7 @@ export async function getActiveSections(): Promise<Section[]> {
  */
 export async function getProductsBySection(
   sectionId: string,
-  limitCount: number = 12
+  limitCount: number = 12,
 ): Promise<Product[]> {
   if (!isFirebaseConfigured() || !db) {
     console.warn("Firebase not configured or db is null");
@@ -58,7 +58,7 @@ export async function getProductsBySection(
     // Fetch all products for section and filter/sort in JavaScript
     const q = query(
       collection(db, "products"),
-      where("sectionId", "==", sectionId)
+      where("sectionId", "==", sectionId),
     );
     const querySnapshot = await getDocs(q);
     const products = querySnapshot.docs.map((doc) => ({
@@ -81,7 +81,7 @@ export async function getProductsBySection(
       .slice(0, limitCount);
 
     console.log(
-      `Found ${inStockProducts.length} products for section ${sectionId}`
+      `Found ${inStockProducts.length} products for section ${sectionId}`,
     );
     return inStockProducts;
   } catch (error) {
@@ -94,7 +94,7 @@ export async function getProductsBySection(
  * Fetch all products (for sections without specific products assigned)
  */
 export async function getAllProducts(
-  limitCount: number = 12
+  limitCount: number = 12,
 ): Promise<Product[]> {
   if (!isFirebaseConfigured() || !db) {
     return [];
@@ -134,7 +134,7 @@ export async function getAllProducts(
  * Fetch latest products (products with "NEW" badge)
  */
 export async function getLatestProducts(
-  limitCount: number = 12
+  limitCount: number = 12,
 ): Promise<Product[]> {
   if (!isFirebaseConfigured() || !db) {
     return [];
@@ -156,7 +156,7 @@ export async function getLatestProducts(
     const latestProducts = products
       .filter(
         (product) =>
-          product.inStock === true && product.badge?.toUpperCase() === "NEW"
+          product.inStock === true && product.badge?.toUpperCase() === "NEW",
       )
       .sort((a, b) => {
         const dateA = a.createdAt?.getTime() || 0;
@@ -177,7 +177,7 @@ export async function getLatestProducts(
  * Fetch featured products
  */
 export async function getFeaturedProducts(
-  limitCount: number = 8
+  limitCount: number = 8,
 ): Promise<Product[]> {
   if (!isFirebaseConfigured() || !db) {
     return [];
@@ -189,7 +189,7 @@ export async function getFeaturedProducts(
       where("featured", "==", true),
       where("inStock", "==", true),
       orderBy("createdAt", "desc"),
-      limit(limitCount)
+      limit(limitCount),
     );
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map((doc) => ({
