@@ -21,6 +21,7 @@ export default function LodgeInternetPage() {
   const [revealedCode, setRevealedCode] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [paystackLoaded, setPaystackLoaded] = useState(false);
+  const [selectedUserCount, setSelectedUserCount] = useState<number>(3);
 
   useEffect(() => {
     fetchPlans();
@@ -53,6 +54,15 @@ export default function LodgeInternetPage() {
   };
 
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId);
+
+  // Filter plans by selected user count
+  const filteredPlans = plans.filter((plan) => plan.usersCount === selectedUserCount);
+
+  // Group plans by name (data amount) to avoid duplicates
+  const uniquePlanNames = Array.from(new Set(filteredPlans.map((p) => p.name)));
+  const displayPlans = uniquePlanNames.map((name) => 
+    filteredPlans.find((p) => p.name === name)!
+  );
 
   const handlePurchase = async () => {
     if (!selectedPlan) {
@@ -279,9 +289,41 @@ export default function LodgeInternetPage() {
               <h2 className="text-4xl sm:text-5xl font-semibold text-apple-gray-900 mb-4">
                 Choose Your Plan
               </h2>
-              <p className="text-lg sm:text-xl text-apple-gray-600 max-w-2xl mx-auto">
+              <p className="text-lg sm:text-xl text-apple-gray-600 max-w-2xl mx-auto mb-8">
                 Select a data plan and get instant access to high-speed internet
               </p>
+
+              {/* User Count Toggle */}
+              <div className="inline-flex items-center gap-2 bg-apple-gray-100 rounded-2xl p-2 shadow-inner">
+                <button
+                  onClick={() => {
+                    setSelectedUserCount(3);
+                    setSelectedPlanId("");
+                  }}
+                  className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                    selectedUserCount === 3
+                      ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg"
+                      : "text-apple-gray-700 hover:text-apple-gray-900"
+                  }`}
+                >
+                  <Users className="w-5 h-5 inline-block mr-2" />
+                  3 Users
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedUserCount(5);
+                    setSelectedPlanId("");
+                  }}
+                  className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                    selectedUserCount === 5
+                      ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg"
+                      : "text-apple-gray-700 hover:text-apple-gray-900"
+                  }`}
+                >
+                  <Users className="w-5 h-5 inline-block mr-2" />
+                  5 Users
+                </button>
+              </div>
             </div>
 
             {error && (
@@ -298,19 +340,19 @@ export default function LodgeInternetPage() {
                 </div>
                 <p className="text-lg text-apple-gray-600">Loading plans...</p>
               </div>
-            ) : plans.length === 0 ? (
+            ) : displayPlans.length === 0 ? (
               <div className="text-center py-20 bg-apple-gray-50 rounded-3xl max-w-2xl mx-auto">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-apple-gray-200 rounded-2xl mb-6">
                   <Wifi className="w-8 h-8 text-apple-gray-600" />
                 </div>
                 <p className="text-lg text-apple-gray-600">
-                  No plans available at the moment. Please check back later.
+                  No plans available for {selectedUserCount} users at the moment.
                 </p>
               </div>
             ) : (
               <>
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-6xl mx-auto mb-12">
-                  {plans.map((plan) => (
+                  {displayPlans.map((plan) => (
                     <div
                       key={plan.id}
                       onClick={() => setSelectedPlanId(plan.id)}
@@ -351,14 +393,7 @@ export default function LodgeInternetPage() {
                           {plan.name}
                         </h3>
 
-                        <div className="flex items-center justify-center gap-3 mb-6">
-                          <Users className={`w-6 h-6 ${selectedPlanId === plan.id ? 'text-blue-600' : 'text-apple-gray-600'}`} strokeWidth={2} />
-                          <span className="text-lg font-medium text-apple-gray-700">
-                            {plan.usersCount} Users
-                          </span>
-                        </div>
-
-                        <div className="mb-3">
+                        <div className="mb-6">
                           <span className={`text-5xl font-semibold ${
                             selectedPlanId === plan.id 
                               ? 'bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent' 
@@ -369,7 +404,7 @@ export default function LodgeInternetPage() {
                         </div>
 
                         <div className="text-sm text-apple-gray-600 font-medium">
-                          One-time payment
+                          One-time payment • {selectedUserCount} Users
                         </div>
                       </div>
                     </div>
@@ -391,7 +426,7 @@ export default function LodgeInternetPage() {
                         </p>
                         <p className="text-lg text-apple-gray-600 flex items-center gap-2">
                           <Users className="w-5 h-5" />
-                          {selectedPlan.usersCount} Users
+                          {selectedUserCount} Users
                         </p>
                       </div>
                       <button
