@@ -8,7 +8,17 @@ import ProtectedRoute from "@/components/admin/ProtectedRoute";
 import Logo from "@/components/Logo";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
-import { KeyRound, LogOut, RefreshCw, Trash2, LayoutGrid, Receipt, MessageSquare, Star } from "lucide-react";
+import {
+  KeyRound,
+  LogOut,
+  RefreshCw,
+  Trash2,
+  LayoutGrid,
+  Receipt,
+  MessageSquare,
+  Star,
+  Tv,
+} from "lucide-react";
 import type { DataPlan, DataCode } from "@/types";
 
 interface DataPurchase {
@@ -39,7 +49,9 @@ export default function AdminDataCodesPage() {
   const router = useRouter();
 
   const [planName, setPlanName] = useState("");
+  const [planType, setPlanType] = useState<"device" | "tv">("device");
   const [usersCount, setUsersCount] = useState<number>(USER_OPTIONS[0]);
+  const [duration, setDuration] = useState<number>(7); // Duration in days for TV plans
   const [price, setPrice] = useState<number>(0);
   const [codeInput, setCodeInput] = useState("");
   const [plans, setPlans] = useState<DataPlan[]>([]);
@@ -58,12 +70,17 @@ export default function AdminDataCodesPage() {
   const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
   const [loadingFeedback, setLoadingFeedback] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
-  const [feedbackFilter, setFeedbackFilter] = useState<"all" | "review" | "complaint">("all");
+  const [feedbackFilter, setFeedbackFilter] = useState<
+    "all" | "review" | "complaint"
+  >("all");
+  const [pendingCount, setPendingCount] = useState(0);
+  const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
     fetchPlans();
     fetchPurchases();
     fetchFeedback();
+    fetchPendingTVSubscriptions();
   }, []);
 
   const fetchPlans = async () => {
@@ -75,12 +92,22 @@ export default function AdminDataCodesPage() {
         orderBy("name", "asc"),
       );
       const snapshot = await getDocs(plansQuery);
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate(),
-        updatedAt: doc.data().updatedAt?.toDate(),
-      })) as DataPlan[];
+      const data = snapshot.docs.map((doc) => {
+        const docData = doc.data();
+        // Infer planType for legacy plans that don't have it
+        let planType = docData.planType;
+        if (!planType) {
+          // Legacy plans: if it has usersCount, it's a device plan
+          planType = docData.usersCount ? "device" : "tv";
+        }
+        return {
+          id: doc.id,
+          ...docData,
+          planType,
+          createdAt: docData.createdAt?.toDate(),
+          updatedAt: docData.updatedAt?.toDate(),
+        };
+      }) as DataPlan[];
       setPlans(data);
     } catch (err) {
       console.error("Error fetching plans:", err);
@@ -116,7 +143,7 @@ export default function AdminDataCodesPage() {
     try {
       const response = await fetch("/api/data-codes/feedback");
       const result = await response.json();
-      
+
       if (response.ok) {
         setFeedback(result.feedback || []);
       }
@@ -127,20 +154,48 @@ export default function AdminDataCodesPage() {
     }
   };
 
-  const totalRevenue = purchases.reduce((sum, purchase) => sum + purchase.price, 0);
+  const fetchPendingTVSubscriptions = async () => {
+    try {
+      const response = await fetch(
+        "/api/tv/subscriptions?status=pending_activation",
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setPendingCount(data.count || 0);
+      }
+    } catch (err) {
+      console.error("Error fetching pending TV subscriptions:", err);
+    }
+  };
+
+  const totalRevenue = purchases.reduce(
+    (sum, purchase) => sum + purchase.price,
+    0,
+  );
 
   const selectedPlan = useMemo(() => {
     if (selectedPlanId && !isNewPlan) {
       return plans.find((plan) => plan.id === selectedPlanId);
     }
     const normalizedName = planName.trim().toLowerCase();
-    return plans.find(
-      (plan) =>
-        plan.name.toLowerCase() === normalizedName &&
-        plan.usersCount === usersCount &&
-        plan.price === price,
-    );
-  }, [plans, planName, usersCount, price, selectedPlanId, isNewPlan]);
+    return plans.find((plan) => {
+      if (plan.planType !== planType) return false;
+      if (plan.name.toLowerCase() !== normalizedName) return false;
+      if (plan.price !== price) return false;
+      if (planType === "device" && plan.usersCount !== usersCount) return false;
+      if (planType === "tv" && plan.duration !== duration) return false;
+      return true;
+    });
+  }, [
+    plans,
+    planName,
+    planType,
+    usersCount,
+    duration,
+    price,
+    selectedPlanId,
+    isNewPlan,
+  ]);
 
   const fetchCodes = async (targetPlanId: string) => {
     if (!isFirebaseConfigured() || !db) return;
@@ -183,28 +238,49 @@ export default function AdminDataCodesPage() {
     setError("");
 
     const currentPlanName = isNewPlan ? planName : selectedPlan?.name || "";
-    const currentUsersCount = isNewPlan ? usersCount : selectedPlan?.usersCount || 0;
+    const currentPlanType = isNewPlan
+      ? planType
+      : selectedPlan?.planType || "device";
+    const currentUsersCount = isNewPlan
+      ? usersCount
+      : selectedPlan?.usersCount || 0;
+    const currentDuration = isNewPlan ? duration : selectedPlan?.duration || 0;
     const currentPrice = isNewPlan ? price : selectedPlan?.price || 0;
 
-    if (!currentPlanName.trim() || !currentPrice || !codeInput.trim()) {
-      setError("Please select/enter plan details and a code.");
+    // Validation - TV plans don't need codes
+    if (!currentPlanName.trim() || !currentPrice) {
+      setError("Please enter plan name and price.");
+      return;
+    }
+
+    if (currentPlanType === "device" && !codeInput.trim()) {
+      setError("Please enter an access code for device plans.");
       return;
     }
 
     setAdding(true);
 
     try {
+      const requestBody: any = {
+        planName: currentPlanName.trim(),
+        planType: currentPlanType,
+        price: currentPrice,
+      };
+
+      // Only include relevant fields for each plan type
+      if (currentPlanType === "device") {
+        requestBody.usersCount = currentUsersCount;
+        requestBody.code = codeInput.trim();
+      } else {
+        requestBody.duration = currentDuration;
+      }
+
       const response = await fetch("/api/data-codes/add", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          planName: currentPlanName.trim(),
-          usersCount: currentUsersCount,
-          price: currentPrice,
-          code: codeInput.trim(),
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const result = await response.json();
@@ -216,17 +292,34 @@ export default function AdminDataCodesPage() {
       if (!isNewPlan) {
         setSelectedPlanId(result.planId);
       }
-      setCodes((prev) => [
-        {
-          id: result.codeId,
-          planId: result.planId,
-          codeMask: result.codeMask,
-          createdAt: new Date(),
-        },
-        ...prev,
-      ]);
+
+      // Only add to codes list if it's a device plan with a code
+      if (currentPlanType === "device" && result.codeId) {
+        setCodes((prev) => [
+          {
+            id: result.codeId,
+            planId: result.planId,
+            codeMask: result.codeMask,
+            createdAt: new Date(),
+          },
+          ...prev,
+        ]);
+      }
+
       setCodeInput("");
       await fetchPlans();
+
+      // Show success message for TV plans
+      if (currentPlanType === "tv") {
+        setSuccessMessage(
+          "TV Plan created successfully! Users can now purchase it from the Lodge Internet page.",
+        );
+        setTimeout(() => setSuccessMessage(""), 5000);
+        // Reset form for new plan
+        setPlanName("");
+        setDuration(7);
+        setPrice(0);
+      }
     } catch (err: any) {
       console.error("Error adding code:", err);
       setError(err?.message || "Failed to add code");
@@ -240,7 +333,9 @@ export default function AdminDataCodesPage() {
       setIsNewPlan(true);
       setSelectedPlanId("");
       setPlanName("");
+      setPlanType("device");
       setUsersCount(USER_OPTIONS[0]);
+      setDuration(7);
       setPrice(0);
       setPlanId(null);
       setCodes([]);
@@ -250,10 +345,17 @@ export default function AdminDataCodesPage() {
         setIsNewPlan(false);
         setSelectedPlanId(value);
         setPlanName(plan.name);
-        setUsersCount(plan.usersCount);
+        setPlanType(plan.planType);
+        if (plan.planType === "device") {
+          setUsersCount(plan.usersCount || 3);
+        } else {
+          setDuration(plan.duration || 7);
+        }
         setPrice(plan.price);
         setPlanId(plan.id);
-        fetchCodes(plan.id);
+        if (plan.planType === "device") {
+          fetchCodes(plan.id);
+        }
       }
     }
   };
@@ -264,11 +366,7 @@ export default function AdminDataCodesPage() {
   };
 
   const handleDeleteCode = async (codeId: string, codeMask: string) => {
-    if (
-      !confirm(
-        `Delete code ${codeMask}?\n\nThis action cannot be undone.`
-      )
-    ) {
+    if (!confirm(`Delete code ${codeMask}?\n\nThis action cannot be undone.`)) {
       return;
     }
 
@@ -299,9 +397,14 @@ export default function AdminDataCodesPage() {
   };
 
   const handleDeletePlan = async (planToDelete: DataPlan) => {
+    const planDetails =
+      planToDelete.planType === "device"
+        ? `${planToDelete.usersCount} Users`
+        : `${planToDelete.duration} Days`;
+
     if (
       !confirm(
-        `Delete plan "${planToDelete.name}" (${planToDelete.usersCount} Users - ₦${planToDelete.price.toLocaleString()})?\n\nThis will delete the plan and ALL associated codes.\n\nThis action cannot be undone.`
+        `Delete plan "${planToDelete.name}" (${planDetails} - ₦${planToDelete.price.toLocaleString()})?\n\nThis will delete the plan and ALL associated codes.\n\nThis action cannot be undone.`,
       )
     ) {
       return;
@@ -326,7 +429,7 @@ export default function AdminDataCodesPage() {
 
       // Remove plan from list
       setPlans((prev) => prev.filter((p) => p.id !== planToDelete.id));
-      
+
       // Reset if this was the selected plan
       if (selectedPlanId === planToDelete.id) {
         setSelectedPlanId("");
@@ -335,7 +438,10 @@ export default function AdminDataCodesPage() {
         setPlanId(null);
       }
 
-      alert(`Plan deleted successfully. ${result.deletedCodesCount} code(s) were also removed.`);
+      setSuccessMessage(
+        `Plan deleted successfully. ${result.deletedCodesCount} code(s) were also removed.`,
+      );
+      setTimeout(() => setSuccessMessage(""), 5000);
     } catch (err: any) {
       console.error("Error deleting plan:", err);
       setError(err?.message || "Failed to delete plan");
@@ -347,6 +453,47 @@ export default function AdminDataCodesPage() {
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-apple-gray-50">
+        {/* Success Toast Notification */}
+        {successMessage && (
+          <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-top-2 fade-in duration-300">
+            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-4 rounded-2xl shadow-lg flex items-center gap-3 max-w-md">
+              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg
+                  className="w-5 h-5 text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
+              <p className="font-medium">{successMessage}</p>
+              <button
+                onClick={() => setSuccessMessage("")}
+                className="ml-2 text-white/80 hover:text-white transition-colors"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
         <header className="bg-white shadow-sm sticky top-0 z-10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -382,7 +529,45 @@ export default function AdminDataCodesPage() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Quick Action Buttons */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <button
+              onClick={() => router.push("/admin/tv-users")}
+              className="flex items-center justify-between p-6 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all border-2 border-transparent hover:border-purple-200"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 rounded-xl">
+                  <Tv className="w-6 h-6 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-lg font-semibold text-apple-gray-900">
+                    TV Users
+                  </h3>
+                  <p className="text-sm text-apple-gray-600">
+                    Manage TV subscriptions
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {pendingCount > 0 && (
+                  <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full font-semibold">
+                    {pendingCount}
+                  </span>
+                )}
+                <svg
+                  className="w-5 h-5 text-apple-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </div>
+            </button>
             <button
               onClick={() => setShowPurchases(!showPurchases)}
               className="flex items-center justify-between p-6 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all border-2 border-transparent hover:border-green-200"
@@ -449,27 +634,42 @@ export default function AdminDataCodesPage() {
               {loadingPurchases ? (
                 <div className="text-center py-8">
                   <div className="inline-block w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
-                  <p className="mt-2 text-sm text-apple-gray-500">Loading purchases...</p>
+                  <p className="mt-2 text-sm text-apple-gray-500">
+                    Loading purchases...
+                  </p>
                 </div>
               ) : purchases.length === 0 ? (
                 <div className="text-center py-8">
                   <Receipt className="w-12 h-12 text-apple-gray-300 mx-auto mb-3" />
-                  <p className="text-sm text-apple-gray-500">No purchases yet</p>
+                  <p className="text-sm text-apple-gray-500">
+                    No purchases yet
+                  </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-apple-gray-200">
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-apple-gray-700">Date</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-apple-gray-700">Plan</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-apple-gray-700">Users</th>
-                        <th className="text-right py-3 px-4 text-sm font-semibold text-apple-gray-700">Amount</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-apple-gray-700">
+                          Date
+                        </th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-apple-gray-700">
+                          Plan
+                        </th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-apple-gray-700">
+                          Users
+                        </th>
+                        <th className="text-right py-3 px-4 text-sm font-semibold text-apple-gray-700">
+                          Amount
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {purchases.map((purchase) => (
-                        <tr key={purchase.id} className="border-b border-apple-gray-100 hover:bg-apple-gray-50">
+                        <tr
+                          key={purchase.id}
+                          className="border-b border-apple-gray-100 hover:bg-apple-gray-50"
+                        >
                           <td className="py-3 px-4 text-sm text-apple-gray-600">
                             {purchase.purchasedAt?.toLocaleString()}
                           </td>
@@ -487,7 +687,10 @@ export default function AdminDataCodesPage() {
                     </tbody>
                   </table>
                   <div className="mt-4 flex items-center justify-between text-sm text-apple-gray-600">
-                    <span>{purchases.length} total purchase{purchases.length !== 1 ? 's' : ''}</span>
+                    <span>
+                      {purchases.length} total purchase
+                      {purchases.length !== 1 ? "s" : ""}
+                    </span>
                     <button
                       onClick={fetchPurchases}
                       className="flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium"
@@ -502,53 +705,79 @@ export default function AdminDataCodesPage() {
           )}
 
           {/* Existing Plans Section */}
-          {plans.length > 0 && (
+          {plans.filter((plan) => plan.planType === planType).length > 0 && (
             <section className="bg-white rounded-2xl shadow-sm p-6 mb-8">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
                   <LayoutGrid className="w-5 h-5 text-blue-500" />
                   <h2 className="text-lg font-semibold text-apple-gray-800">
-                    All Data Plans
+                    {planType === "tv" ? "TV Unlimited Plans" : "Device Plans"}
                   </h2>
                 </div>
                 <span className="text-sm text-apple-gray-500">
-                  {plans.length} plan{plans.length !== 1 ? 's' : ''}
+                  {plans.filter((plan) => plan.planType === planType).length}{" "}
+                  plan
+                  {plans.filter((plan) => plan.planType === planType).length !==
+                  1
+                    ? "s"
+                    : ""}
                 </span>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {plans.map((plan) => (
-                  <div
-                    key={plan.id}
-                    className="relative border border-apple-gray-200 rounded-xl p-4 hover:border-blue-300 transition-colors"
-                  >
-                    <div className="mb-3">
-                      <h3 className="font-semibold text-apple-gray-900 mb-1">
-                        {plan.name}
-                      </h3>
-                      <p className="text-sm text-apple-gray-600">
-                        {plan.usersCount} Users
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-bold text-blue-600">
-                        ₦{plan.price.toLocaleString()}
-                      </span>
-                      <button
-                        onClick={() => handleDeletePlan(plan)}
-                        disabled={deletingPlan === plan.id}
-                        className="flex items-center justify-center w-8 h-8 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Delete plan and all codes"
-                      >
-                        {deletingPlan === plan.id ? (
-                          <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
+                {plans
+                  .filter((plan) => plan.planType === planType)
+                  .map((plan) => (
+                    <div
+                      key={plan.id}
+                      className="relative border border-apple-gray-200 rounded-xl p-4 hover:border-blue-300 transition-colors"
+                    >
+                      <div className="mb-3">
+                        <h3 className="font-semibold text-apple-gray-900 mb-1">
+                          {plan.name}
+                        </h3>
+                        {plan.planType === "device" && plan.usersCount && (
+                          <p className="text-sm text-apple-gray-600">
+                            {plan.usersCount} Device
+                            {plan.usersCount !== 1 ? "s" : ""}
+                          </p>
                         )}
-                      </button>
+                        {plan.planType === "tv" && plan.duration && (
+                          <p className="text-sm text-apple-gray-600">
+                            {plan.duration} Days
+                          </p>
+                        )}
+                        <span
+                          className={`inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded ${
+                            plan.planType === "tv"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-blue-100 text-blue-700"
+                          }`}
+                        >
+                          {plan.planType === "tv"
+                            ? "TV Unlimited"
+                            : "Device Plan"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-lg font-bold text-blue-600">
+                          ₦{plan.price.toLocaleString()}
+                        </span>
+                        <button
+                          onClick={() => handleDeletePlan(plan)}
+                          disabled={deletingPlan === plan.id}
+                          className="flex items-center justify-center w-8 h-8 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Delete plan and all codes"
+                        >
+                          {deletingPlan === plan.id ? (
+                            <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             </section>
           )}
@@ -579,12 +808,17 @@ export default function AdminDataCodesPage() {
                     className="w-full px-4 py-3 border border-apple-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="new">+ Create New Plan</option>
-                    {plans.map((plan) => (
-                      <option key={plan.id} value={plan.id}>
-                        {plan.name} - {plan.usersCount} Users - ₦
-                        {plan.price.toLocaleString()}
-                      </option>
-                    ))}
+                    {plans
+                      .filter((plan) => plan.planType === planType)
+                      .map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.name} -{" "}
+                          {plan.planType === "device"
+                            ? `${plan.usersCount} Users`
+                            : `${plan.duration} Days`}{" "}
+                          - ₦{plan.price.toLocaleString()}
+                        </option>
+                      ))}
                   </select>
                 </div>
 
@@ -592,7 +826,55 @@ export default function AdminDataCodesPage() {
                   <>
                     <div>
                       <label className="block text-sm font-medium text-apple-gray-700 mb-2">
-                        Data Plan Name
+                        Plan Type
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Only reset if switching from a different plan type
+                            if (planType !== "device") {
+                              setPlanType("device");
+                              setPlanId(null);
+                              setCodes([]);
+                              setSelectedPlanId("");
+                              setIsNewPlan(true);
+                            }
+                          }}
+                          className={`px-4 py-3 rounded-lg border font-semibold transition-all ${
+                            planType === "device"
+                              ? "border-transparent bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white"
+                              : "border-apple-gray-200 text-apple-gray-700 hover:bg-apple-gray-50"
+                          }`}
+                        >
+                          Device Plans
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Only reset if switching from a different plan type
+                            if (planType !== "tv") {
+                              setPlanType("tv");
+                              setPlanId(null);
+                              setCodes([]);
+                              setSelectedPlanId("");
+                              setIsNewPlan(true);
+                            }
+                          }}
+                          className={`px-4 py-3 rounded-lg border font-semibold transition-all ${
+                            planType === "tv"
+                              ? "border-transparent bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white"
+                              : "border-apple-gray-200 text-apple-gray-700 hover:bg-apple-gray-50"
+                          }`}
+                        >
+                          TV Unlimited
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                        Plan Name
                       </label>
                       <input
                         type="text"
@@ -603,35 +885,65 @@ export default function AdminDataCodesPage() {
                           setCodes([]);
                         }}
                         className="w-full px-4 py-3 border border-apple-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="e.g. Lodge Internet 10GB"
+                        placeholder={
+                          planType === "device"
+                            ? "e.g. Lodge Internet 10GB"
+                            : "e.g. Weekly Plan, Premium Monthly"
+                        }
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-apple-gray-700 mb-2">
-                        Number of Users
-                      </label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {USER_OPTIONS.map((count) => (
-                          <button
-                            key={count}
-                            type="button"
-                            onClick={() => {
-                              setUsersCount(count);
-                              setPlanId(null);
-                              setCodes([]);
-                            }}
-                            className={`px-4 py-3 rounded-lg border font-semibold transition-all ${
-                              usersCount === count
-                                ? "border-transparent bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white"
-                                : "border-apple-gray-200 text-apple-gray-700 hover:bg-apple-gray-50"
-                            }`}
-                          >
-                            {count} Users
-                          </button>
-                        ))}
+                    {planType === "device" && (
+                      <div>
+                        <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                          Number of Users
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {USER_OPTIONS.map((count) => (
+                            <button
+                              key={count}
+                              type="button"
+                              onClick={() => {
+                                setUsersCount(count);
+                                setPlanId(null);
+                                setCodes([]);
+                              }}
+                              className={`px-4 py-3 rounded-lg border font-semibold transition-all ${
+                                usersCount === count
+                                  ? "border-transparent bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white"
+                                  : "border-apple-gray-200 text-apple-gray-700 hover:bg-apple-gray-50"
+                              }`}
+                            >
+                              {count} Users
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {planType === "tv" && (
+                      <div>
+                        <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                          Duration (Days)
+                        </label>
+                        <input
+                          type="number"
+                          value={duration}
+                          onChange={(event) => {
+                            setDuration(Number(event.target.value));
+                            setPlanId(null);
+                            setCodes([]);
+                          }}
+                          className="w-full px-4 py-3 border border-apple-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="e.g. 7 for weekly, 30 for monthly"
+                          min={1}
+                        />
+                        <p className="mt-1 text-sm text-apple-gray-500">
+                          e.g., 7 days (weekly), 21 days, 30 days (monthly),
+                          etc.
+                        </p>
+                      </div>
+                    )}
 
                     <div>
                       <label className="block text-sm font-medium text-apple-gray-700 mb-2">
@@ -663,8 +975,22 @@ export default function AdminDataCodesPage() {
                         <strong>Name:</strong> {selectedPlan.name}
                       </p>
                       <p>
-                        <strong>Users:</strong> {selectedPlan.usersCount}
+                        <strong>Type:</strong>{" "}
+                        {selectedPlan.planType === "device"
+                          ? "Device Plan"
+                          : "TV Unlimited"}
                       </p>
+                      {selectedPlan.planType === "device" && (
+                        <p>
+                          <strong>Users:</strong> {selectedPlan.usersCount}
+                        </p>
+                      )}
+                      {selectedPlan.planType === "tv" && (
+                        <p>
+                          <strong>Duration:</strong> {selectedPlan.duration}{" "}
+                          days
+                        </p>
+                      )}
                       <p>
                         <strong>Price:</strong> ₦
                         {selectedPlan.price.toLocaleString()}
@@ -673,38 +999,64 @@ export default function AdminDataCodesPage() {
                   </div>
                 )}
 
-                <div>
-                  <label className="block text-sm font-medium text-apple-gray-700 mb-2">
-                    Access Code
-                  </label>
-                  <input
-                    type="text"
-                    value={codeInput}
-                    onChange={(event) => setCodeInput(event.target.value)}
-                    className="w-full px-4 py-3 border border-apple-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter one code"
-                  />
-                </div>
+                {/* Code section - Only for Device Plans */}
+                {(!isNewPlan && selectedPlan?.planType === "device") ||
+                (isNewPlan && planType === "device") ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                        Access Code
+                      </label>
+                      <input
+                        type="text"
+                        value={codeInput}
+                        onChange={(event) => setCodeInput(event.target.value)}
+                        className="w-full px-4 py-3 border border-apple-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter one code"
+                      />
+                    </div>
 
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <button
-                    onClick={handleAddCode}
-                    disabled={adding}
-                    className="flex-1 bg-gradient-to-r from-blue-400 via-blue-500 to-black-400 text-white font-semibold py-3 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-                  >
-                    {adding ? "Adding..." : "Add Code"}
-                  </button>
-                  {!isNewPlan && (
-                    <button
-                      onClick={handleLoadCodes}
-                      type="button"
-                      className="flex items-center justify-center gap-2 px-4 py-3 border border-apple-gray-200 text-apple-gray-700 rounded-lg hover:bg-apple-gray-50 transition-colors"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      Reload
-                    </button>
-                  )}
-                </div>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <button
+                        onClick={handleAddCode}
+                        disabled={adding}
+                        className="flex-1 bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white font-semibold py-3 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                      >
+                        {adding ? "Adding..." : "Add Code"}
+                      </button>
+                      {!isNewPlan && (
+                        <button
+                          onClick={handleLoadCodes}
+                          type="button"
+                          className="flex items-center justify-center gap-2 px-4 py-3 border border-apple-gray-200 text-apple-gray-700 rounded-lg hover:bg-apple-gray-50 transition-colors"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          Reload
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  /* TV Plans - No codes needed */
+                  isNewPlan &&
+                  planType === "tv" && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm text-blue-800">
+                        <strong>Note:</strong> TV Unlimited plans don't require
+                        access codes. Users will purchase subscriptions
+                        directly, and you'll activate them manually from the TV
+                        Users page.
+                      </p>
+                      <button
+                        onClick={handleAddCode}
+                        disabled={adding}
+                        className="mt-4 w-full bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white font-semibold py-3 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                      >
+                        {adding ? "Creating Plan..." : "Create TV Plan"}
+                      </button>
+                    </div>
+                  )
+                )}
 
                 <p className="text-xs text-apple-gray-500">
                   Codes are encrypted and hashed before storage. Only masked
@@ -728,7 +1080,9 @@ export default function AdminDataCodesPage() {
                 {selectedPlan && (
                   <span className="text-xs font-medium text-apple-gray-600 bg-apple-gray-100 px-3 py-1 rounded-full">
                     ₦{selectedPlan.price.toLocaleString()} •{" "}
-                    {selectedPlan.usersCount} Users
+                    {selectedPlan.planType === "device"
+                      ? `${selectedPlan.usersCount} Users`
+                      : `${selectedPlan.duration} Days`}
                   </span>
                 )}
               </div>
@@ -807,7 +1161,8 @@ export default function AdminDataCodesPage() {
                           : "bg-apple-gray-100 text-apple-gray-600 hover:bg-apple-gray-200"
                       }`}
                     >
-                      Reviews ({feedback.filter(f => f.type === "review").length})
+                      Reviews (
+                      {feedback.filter((f) => f.type === "review").length})
                     </button>
                     <button
                       onClick={() => setFeedbackFilter("complaint")}
@@ -817,7 +1172,8 @@ export default function AdminDataCodesPage() {
                           : "bg-apple-gray-100 text-apple-gray-600 hover:bg-apple-gray-200"
                       }`}
                     >
-                      Complaints ({feedback.filter(f => f.type === "complaint").length})
+                      Complaints (
+                      {feedback.filter((f) => f.type === "complaint").length})
                     </button>
                   </div>
                   <button
@@ -833,19 +1189,28 @@ export default function AdminDataCodesPage() {
               {loadingFeedback ? (
                 <div className="text-center py-8">
                   <div className="inline-block w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-                  <p className="mt-2 text-sm text-apple-gray-500">Loading feedback...</p>
+                  <p className="mt-2 text-sm text-apple-gray-500">
+                    Loading feedback...
+                  </p>
                 </div>
-              ) : feedback.filter(f => feedbackFilter === "all" || f.type === feedbackFilter).length === 0 ? (
+              ) : feedback.filter(
+                  (f) => feedbackFilter === "all" || f.type === feedbackFilter,
+                ).length === 0 ? (
                 <div className="text-center py-8">
                   <MessageSquare className="w-12 h-12 text-apple-gray-300 mx-auto mb-3" />
                   <p className="text-sm text-apple-gray-500">
-                    {feedbackFilter === "all" ? "No feedback yet" : `No ${feedbackFilter}s yet`}
+                    {feedbackFilter === "all"
+                      ? "No feedback yet"
+                      : `No ${feedbackFilter}s yet`}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {feedback
-                    .filter(f => feedbackFilter === "all" || f.type === feedbackFilter)
+                    .filter(
+                      (f) =>
+                        feedbackFilter === "all" || f.type === feedbackFilter,
+                    )
                     .map((item) => (
                       <div
                         key={item.id}
@@ -858,18 +1223,24 @@ export default function AdminDataCodesPage() {
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className={`text-2xl ${item.type === "review" ? "text-green-600" : "text-red-600"}`}>
+                              <span
+                                className={`text-2xl ${item.type === "review" ? "text-green-600" : "text-red-600"}`}
+                              >
                                 {item.type === "review" ? "⭐" : "⚠️"}
                               </span>
                               <h3 className="font-semibold text-apple-gray-900">
                                 {item.name}
                               </h3>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                item.type === "review"
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-red-100 text-red-700"
-                              }`}>
-                                {item.type === "review" ? "Review" : "Complaint"}
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  item.type === "review"
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-red-100 text-red-700"
+                                }`}
+                              >
+                                {item.type === "review"
+                                  ? "Review"
+                                  : "Complaint"}
                               </span>
                             </div>
                             <p className="text-sm text-apple-gray-600">
@@ -904,9 +1275,11 @@ export default function AdminDataCodesPage() {
                           </div>
                         )}
 
-                        <div className={`p-4 rounded-lg ${
-                          item.type === "review" ? "bg-white" : "bg-white"
-                        }`}>
+                        <div
+                          className={`p-4 rounded-lg ${
+                            item.type === "review" ? "bg-white" : "bg-white"
+                          }`}
+                        >
                           <p className="text-apple-gray-800 whitespace-pre-wrap">
                             {item.message}
                           </p>

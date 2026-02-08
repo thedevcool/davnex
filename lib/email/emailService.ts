@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import nodemailer from "nodemailer";
 
 // Create reusable transporter object using SMTP transport
 let transporter: nodemailer.Transporter | null = null;
@@ -12,19 +12,21 @@ export function initializeEmailTransporter() {
     const emailPassword = process.env.EMAIL_APP_PASSWORD;
 
     if (!emailUser || !emailPassword) {
-      console.error('Email credentials not configured. Set EMAIL_FROM and EMAIL_APP_PASSWORD in .env.local');
+      console.error(
+        "Email credentials not configured. Set EMAIL_FROM and EMAIL_APP_PASSWORD in .env.local",
+      );
       return null;
     }
 
     transporter = nodemailer.createTransport({
-      service: 'gmail',
+      service: "gmail",
       auth: {
         user: emailUser,
         pass: emailPassword,
       },
     });
 
-    console.log('Email transporter initialized');
+    console.log("Email transporter initialized");
   }
 
   return transporter;
@@ -51,10 +53,10 @@ export async function verifyEmailConnection() {
 
   try {
     await transporter.verify();
-    console.log('Email server is ready to send messages');
+    console.log("Email server is ready to send messages");
     return true;
   } catch (error) {
-    console.error('Email server verification failed:', error);
+    console.error("Email server verification failed:", error);
     return false;
   }
 }
@@ -67,27 +69,29 @@ export async function sendEmail(options: {
   subject: string;
   html: string;
   text?: string;
+  senderName?: string; // Optional custom sender name
 }) {
   const transporter = getEmailTransporter();
   if (!transporter) {
-    throw new Error('Email transporter not initialized');
+    throw new Error("Email transporter not initialized");
   }
 
   const from = process.env.EMAIL_FROM || process.env.EMAIL_USER;
+  const senderName = options.senderName || "Davnex Store";
 
   try {
     const info = await transporter.sendMail({
-      from: `"Davnex Store" <${from}>`,
-      to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
+      from: `"${senderName}" <${from}>`,
+      to: Array.isArray(options.to) ? options.to.join(", ") : options.to,
       subject: options.subject,
       text: options.text,
       html: options.html,
     });
 
-    console.log('Email sent successfully:', info.messageId);
+    console.log("Email sent successfully:", info.messageId);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error("Error sending email:", error);
     throw error;
   }
 }

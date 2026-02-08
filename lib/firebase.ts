@@ -39,11 +39,21 @@ try {
     auth = getAuth(app);
   } else {
     console.warn(
-      "⚠️  Firebase is not configured. Please add your Firebase credentials to .env.local"
+      "⚠️  Firebase is not configured. Please add your Firebase credentials to .env.local",
     );
   }
 } catch (error) {
   console.error("❌ Firebase initialization error:", error);
+}
+
+// Helper to get auth instance with type safety
+export function getAuthInstance(): Auth {
+  if (!auth) {
+    throw new Error(
+      "Firebase Auth is not initialized. Check your environment configuration.",
+    );
+  }
+  return auth;
 }
 
 export { app, db, storage, auth, isFirebaseConfigured };

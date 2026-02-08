@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ToastProvider } from "@/components/Toast";
 
 export const metadata: Metadata = {
   title: "Lodge Internet - Fast and Reliable Hostel Internet | Davnex",
@@ -11,5 +12,9 @@ export default function InternetLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return <main className="min-h-screen">{children}</main>;
+  return (
+    <ToastProvider>
+      <main className="min-h-screen">{children}</main>
+    </ToastProvider>
+  );
 }

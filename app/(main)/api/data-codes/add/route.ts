@@ -29,38 +29,87 @@ export async function POST(request: Request) {
     const body = await request.json();
     const planName =
       typeof body.planName === "string" ? body.planName.trim() : "";
-    const usersCount = Number(body.usersCount);
+    const planType = body.planType === "tv" ? "tv" : "device";
+    const usersCount = Number(body.usersCount) || undefined;
+    const duration = Number(body.duration) || undefined;
     const price = Number(body.price);
     const rawCode = typeof body.code === "string" ? body.code : "";
 
-    if (!planName || !usersCount || !price || !rawCode.trim()) {
+    // Validate required fields
+    if (!planName || !price) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Plan name and price are required" },
         { status: 400 },
       );
     }
 
-    const normalizedCode = normalizeCode(rawCode);
+    // Validate plan-specific requirements
+    if (planType === "device" && !usersCount) {
+      return NextResponse.json(
+        { error: "Users count is required for device plans" },
+        { status: 400 },
+      );
+    }
+
+    if (planType === "device" && !rawCode.trim()) {
+      return NextResponse.json(
+        { error: "Access code is required for device plans" },
+        { status: 400 },
+      );
+    }
+
+    if (planType === "tv" && !duration) {
+      return NextResponse.json(
+        { error: "Duration is required for TV plans" },
+        { status: 400 },
+      );
+    }
+
     const plansRef = collection(db, "dataPlans");
-    const planQuery = query(
-      plansRef,
-      where("name", "==", planName),
-      where("usersCount", "==", usersCount),
-      where("price", "==", price),
-      limit(1),
-    );
+
+    // Build query based on plan type
+    let planQuery;
+    if (planType === "device") {
+      planQuery = query(
+        plansRef,
+        where("name", "==", planName),
+        where("planType", "==", "device"),
+        where("usersCount", "==", usersCount),
+        where("price", "==", price),
+        limit(1),
+      );
+    } else {
+      planQuery = query(
+        plansRef,
+        where("name", "==", planName),
+        where("planType", "==", "tv"),
+        where("duration", "==", duration),
+        where("price", "==", price),
+        limit(1),
+      );
+    }
+
     const planSnapshot = await getDocs(planQuery);
 
     let planId: string;
     if (planSnapshot.empty) {
-      const created = await addDoc(plansRef, {
+      // Create new plan with appropriate fields
+      const planData: any = {
         name: planName,
-        usersCount,
+        planType,
         price,
         isActive: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      if (planType === "device") {
+        planData.usersCount = usersCount;
+      } else {
+        planData.duration = duration;
+      }
+
+      const created = await addDoc(plansRef, planData);
       planId = created.id;
     } else {
       const existing = planSnapshot.docs[0];
@@ -68,6 +117,16 @@ export async function POST(request: Request) {
       await updateDoc(existing.ref, { updatedAt: serverTimestamp() });
     }
 
+    // For TV plans, we're done - no codes needed
+    if (planType === "tv") {
+      return NextResponse.json({
+        planId,
+        message: "TV plan created successfully",
+      });
+    }
+
+    // For device plans, create the code
+    const normalizedCode = normalizeCode(rawCode);
     const codesRef = collection(db, "dataCodes");
     const codeHash = hashCode(normalizedCode);
     const duplicateQuery = query(

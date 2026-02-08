@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Script from "next/script";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
-import { db, isFirebaseConfigured } from "@/lib/firebase";
-import { KeyRound, Wifi, Smartphone } from "lucide-react";
+import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
+import { db, isFirebaseConfigured, getAuthInstance } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { KeyRound, Wifi, Smartphone, Tv } from "lucide-react";
+import { useToast } from "@/components/Toast";
 import type { DataPlan } from "@/types";
 
 declare global {
@@ -13,7 +16,11 @@ declare global {
   }
 }
 
+type PlanView = "device" | "tv";
+
 export default function LodgeInternetPage() {
+  const router = useRouter();
+  const { addToast } = useToast();
   const [plans, setPlans] = useState<DataPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -21,23 +28,83 @@ export default function LodgeInternetPage() {
   const [revealedCode, setRevealedCode] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [paystackLoaded, setPaystackLoaded] = useState(false);
+  const [planView, setPlanView] = useState<PlanView>("device");
   const [selectedDeviceCount, setSelectedDeviceCount] = useState<number>(3);
   const [email, setEmail] = useState<string>("");
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // TV Purchase flow states
+  const [tvPurchaseStep, setTvPurchaseStep] = useState<
+    "email" | "details" | "password" | null
+  >(null);
+  const [isExistingUser, setIsExistingUser] = useState(false);
+  const [tvName, setTvName] = useState<string>("");
+  const [tvMacAddress, setTvMacAddress] = useState<string>("");
+  const [tvPassword, setTvPassword] = useState<string>("");
+  const [tvConfirmPassword, setTvConfirmPassword] = useState<string>("");
+  const [tvPaymentRef, setTvPaymentRef] = useState<string>("");
+  const [tvSubscriptionId, setTvSubscriptionId] = useState<string>("");
+
+  // Feedback states
   const [feedbackName, setFeedbackName] = useState<string>("");
-  const [feedbackType, setFeedbackType] = useState<"review" | "complaint">("review");
+  const [feedbackType, setFeedbackType] = useState<"review" | "complaint">(
+    "review",
+  );
   const [feedbackRating, setFeedbackRating] = useState<number>(5);
   const [feedbackMessage, setFeedbackMessage] = useState<string>("");
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
+  // Plan availability states
+  const [planAvailability, setPlanAvailability] = useState<
+    Record<string, { available: boolean; count: number }>
+  >({});
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+
   useEffect(() => {
     fetchPlans();
+
     // Load email from localStorage
     const savedEmail = localStorage.getItem("userEmail");
     if (savedEmail) {
       setEmail(savedEmail);
     }
+
+    // Check if user is logged in (for TV users)
+    try {
+      const auth = getAuthInstance();
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (user) {
+          setCurrentUser(user);
+          setEmail(user.email || "");
+        } else {
+          setCurrentUser(null);
+        }
+      });
+
+      return () => unsubscribe();
+    } catch (error) {
+      console.error("Auth initialization error:", error);
+    }
   }, []);
+
+  const selectedPlan = plans.find((plan) => plan.id === selectedPlanId);
+
+  // Clear selected plan if it becomes unavailable
+  useEffect(() => {
+    if (selectedPlanId && selectedPlan?.planType === "device") {
+      const availability = planAvailability[selectedPlanId];
+      if (availability && !availability.available) {
+        setSelectedPlanId("");
+        addToast({
+          type: "warning",
+          title: "Plan No Longer Available",
+          message:
+            "The selected plan no longer has codes available. Please choose another plan.",
+        });
+      }
+    }
+  }, [planAvailability, selectedPlanId, selectedPlan, addToast]);
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newEmail = e.target.value;
@@ -58,13 +125,31 @@ export default function LodgeInternetPage() {
         orderBy("price", "asc"),
       );
       const snapshot = await getDocs(plansQuery);
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate(),
-        updatedAt: doc.data().updatedAt?.toDate(),
-      })) as DataPlan[];
+      const data = snapshot.docs.map((doc) => {
+        const docData = doc.data();
+        // Infer planType for legacy plans that don't have it
+        let planType = docData.planType;
+        if (!planType) {
+          // Legacy plans: if it has usersCount, it's a device plan
+          planType = docData.usersCount ? "device" : "tv";
+        }
+        return {
+          id: doc.id,
+          ...docData,
+          planType,
+          createdAt: docData.createdAt?.toDate(),
+          updatedAt: docData.updatedAt?.toDate(),
+        };
+      }) as DataPlan[];
       setPlans(data.filter((plan) => plan.isActive));
+
+      // Check availability for device plans
+      const devicePlans = data.filter(
+        (plan) => plan.planType === "device" && plan.isActive,
+      );
+      if (devicePlans.length > 0) {
+        checkPlanAvailability(devicePlans);
+      }
     } catch (err) {
       console.error("Error fetching plans:", err);
     } finally {
@@ -72,23 +157,97 @@ export default function LodgeInternetPage() {
     }
   };
 
-  const selectedPlan = plans.find((plan) => plan.id === selectedPlanId);
+  const checkPlanAvailability = async (devicePlans: DataPlan[]) => {
+    setCheckingAvailability(true);
 
-  // Filter plans by selected device count
-  const filteredPlans = plans.filter(
-    (plan) => plan.usersCount === selectedDeviceCount,
-  );
+    try {
+      const availabilityPromises = devicePlans.map(async (plan) => {
+        try {
+          const response = await fetch("/api/data-codes/check-availability", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ planId: plan.id }),
+          });
 
-  // Group plans by name (data amount) to avoid duplicates
-  const uniquePlanNames = Array.from(new Set(filteredPlans.map((p) => p.name)));
-  const displayPlans = uniquePlanNames.map(
-    (name) => filteredPlans.find((p) => p.name === name)!,
-  );
+          if (response.ok) {
+            const data = await response.json();
+            return {
+              planId: plan.id,
+              available: data.available,
+              count: data.count,
+            };
+          } else {
+            return { planId: plan.id, available: false, count: 0 };
+          }
+        } catch (error) {
+          console.error(
+            `Error checking availability for plan ${plan.id}:`,
+            error,
+          );
+          return { planId: plan.id, available: false, count: 0 };
+        }
+      });
+
+      const results = await Promise.all(availabilityPromises);
+
+      const availabilityMap: Record<
+        string,
+        { available: boolean; count: number }
+      > = {};
+      results.forEach((result) => {
+        availabilityMap[result.planId] = {
+          available: result.available,
+          count: result.count,
+        };
+      });
+
+      setPlanAvailability(availabilityMap);
+    } catch (error) {
+      console.error("Error checking plan availability:", error);
+    } finally {
+      setCheckingAvailability(false);
+    }
+  };
+
+  // Filter plans by type and device count
+  const filteredPlans = plans.filter((plan) => {
+    if (planView === "device") {
+      return (
+        plan.planType === "device" && plan.usersCount === selectedDeviceCount
+      );
+    } else {
+      return plan.planType === "tv";
+    }
+  });
+
+  // Group device plans by name to avoid duplicates
+  const displayPlans =
+    planView === "device"
+      ? Array.from(new Set(filteredPlans.map((p) => p.name))).map(
+          (name) => filteredPlans.find((p) => p.name === name)!,
+        )
+      : filteredPlans;
 
   const handlePurchase = async () => {
     if (!selectedPlan) {
       setError("Please select a plan");
       return;
+    }
+
+    // Check availability for device plans
+    if (selectedPlan.planType === "device") {
+      const availability = planAvailability[selectedPlan.id];
+      if (!availability?.available) {
+        addToast({
+          type: "error",
+          title: "Plan Not Available",
+          message:
+            "No codes are currently available for this plan. Please select a different plan.",
+        });
+        return;
+      }
     }
 
     if (!email || !email.includes("@")) {
@@ -105,7 +264,11 @@ export default function LodgeInternetPage() {
 
     const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
     if (!paystackKey || paystackKey === "your_paystack_public_key_here") {
-      alert("Paystack is not configured. Please contact support.");
+      addToast({
+        type: "error",
+        title: "Configuration Error",
+        message: "Paystack is not configured. Please contact support.",
+      });
       return;
     }
 
@@ -201,7 +364,263 @@ export default function LodgeInternetPage() {
   const copyToClipboard = () => {
     if (revealedCode) {
       navigator.clipboard.writeText(revealedCode);
-      alert("Code copied to clipboard!");
+      addToast({
+        type: "success",
+        title: "Code Copied",
+        message: "Code copied to clipboard!",
+      });
+    }
+  };
+
+  // TV Purchase Flow Functions
+  const handleTvPurchaseStart = () => {
+    if (!selectedPlan) {
+      setError("Please select a TV plan");
+      return;
+    }
+
+    setError("");
+
+    // If user is already logged in, proceed directly to payment
+    if (currentUser) {
+      setIsExistingUser(true);
+      handleTvPayment(true);
+    } else {
+      // Not logged in, start with email step
+      setTvPurchaseStep("email");
+    }
+  };
+
+  const handleTvEmailCheck = async () => {
+    if (!email || !email.includes("@")) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
+    setError("");
+    setPurchasing(true);
+
+    try {
+      const response = await fetch("/api/tv/check-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+
+      const result = await response.json();
+
+      if (result.exists) {
+        // Existing user - redirect to login page
+        addToast({
+          type: "warning",
+          title: "Account Exists",
+          message:
+            "An account already exists with this email. Please login to purchase a new subscription.",
+        });
+        router.push("/internet/login");
+      } else {
+        // New user - collect details
+        setIsExistingUser(false);
+        setTvPurchaseStep("details");
+      }
+    } catch (err: any) {
+      console.error("Error checking account:", err);
+      setError(err.message || "Failed to check account");
+    } finally {
+      setPurchasing(false);
+    }
+  };
+
+  const handleTvDetailsSubmit = () => {
+    if (!tvName.trim()) {
+      setError("Please enter your name");
+      return;
+    }
+
+    if (!tvMacAddress.trim()) {
+      setError("Please enter your TV MAC address");
+      return;
+    }
+
+    // Basic MAC address validation
+    const macRegex =
+      /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$|^([0-9A-Fa-f]{12})$/;
+    if (!macRegex.test(tvMacAddress.trim())) {
+      setError("Please enter a valid MAC address (e.g., 00:1A:2B:3C:4D:5E)");
+      return;
+    }
+
+    setError("");
+    handleTvPayment(false);
+  };
+
+  const handleTvPayment = async (isExisting: boolean) => {
+    if (!selectedPlan || !paystackLoaded || !window.PaystackPop) {
+      setError("Payment system is not ready. Please try again.");
+      return;
+    }
+
+    const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
+    if (!paystackKey) {
+      addToast({
+        type: "error",
+        title: "Configuration Error",
+        message: "Paystack is not configured. Please contact support.",
+      });
+      return;
+    }
+
+    setPurchasing(true);
+    setError("");
+
+    try {
+      const totalAmount = selectedPlan.price + 100; // Add ₦100 bank charges
+      const handler = window.PaystackPop.setup({
+        key: paystackKey,
+        email: email,
+        amount: totalAmount * 100,
+        currency: "NGN",
+        ref: `TV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        metadata: {
+          planId: selectedPlan.id,
+          planName: selectedPlan.name,
+          planType: "tv",
+          isExistingUser: isExisting,
+          name: isExisting ? "" : tvName,
+          macAddress: isExisting ? "" : tvMacAddress,
+        },
+        callback: (response: any) =>
+          handleTvPaymentSuccess(response, isExisting),
+        onClose: () => {
+          setPurchasing(false);
+          setError("Payment was cancelled");
+        },
+      });
+
+      handler.openIframe();
+    } catch (err: any) {
+      console.error("Payment error:", err);
+      setError("Failed to initiate payment");
+      setPurchasing(false);
+    }
+  };
+
+  const handleTvPaymentSuccess = async (response: any, isExisting: boolean) => {
+    const reference = response.reference;
+    setTvPaymentRef(reference);
+
+    try {
+      const purchaseResponse = await fetch("/api/tv/purchase", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          name: isExisting ? "" : tvName.trim(),
+          macAddress: isExisting ? "" : tvMacAddress.trim(),
+          planId: selectedPlan!.id,
+          paymentRef: reference,
+          isNewUser: !isExisting,
+        }),
+      });
+
+      const result = await purchaseResponse.json();
+
+      if (!purchaseResponse.ok) {
+        throw new Error(result.error || "Failed to process purchase");
+      }
+
+      setTvSubscriptionId(result.subscriptionId);
+
+      if (result.isNewUser) {
+        // Show password creation modal
+        setTvPurchaseStep("password");
+      } else {
+        // Redirect to dashboard
+        window.location.href = "/internet/dashboard";
+      }
+    } catch (err: any) {
+      console.error("Error processing TV purchase:", err);
+      setError(
+        err.message ||
+          "Payment successful but failed to activate subscription. Please contact support.",
+      );
+    } finally {
+      setPurchasing(false);
+    }
+  };
+
+  const handleCreateAccount = async () => {
+    if (!tvPassword.trim() || tvPassword.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+
+    if (tvPassword !== tvConfirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    setError("");
+    setPurchasing(true);
+
+    try {
+      // Create Firebase Auth account on client side
+      const auth = getAuthInstance();
+      const { createUserWithEmailAndPassword } = await import("firebase/auth");
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim().toLowerCase(),
+        tvPassword,
+      );
+      const user = userCredential.user;
+
+      // Link user to subscription
+      const response = await fetch("/api/tv/create-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user.uid,
+          subscriptionId: tvSubscriptionId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error || "Failed to link account to subscription",
+        );
+      }
+
+      // Redirect to dashboard
+      addToast({
+        type: "success",
+        title: "Account Created",
+        message: "Account created successfully! Redirecting to dashboard...",
+      });
+      window.location.href = "/internet/dashboard";
+    } catch (err: any) {
+      console.error("Error creating account:", err);
+      // Handle specific Firebase Auth errors
+      if (err.code === "auth/email-already-in-use") {
+        setError(
+          "An account with this email already exists. Please use the login page.",
+        );
+      } else if (err.code === "auth/weak-password") {
+        setError("Password is too weak. Please choose a stronger password.");
+      } else if (err.code === "auth/invalid-email") {
+        setError("Invalid email address.");
+      } else {
+        setError(err.message || "Failed to create account");
+      }
+    } finally {
+      setPurchasing(false);
     }
   };
 
@@ -390,7 +809,10 @@ export default function LodgeInternetPage() {
 
               <form onSubmit={handleFeedbackSubmit} className="space-y-6">
                 <div>
-                  <label htmlFor="feedbackName" className="block text-sm font-medium text-apple-gray-700 mb-2">
+                  <label
+                    htmlFor="feedbackName"
+                    className="block text-sm font-medium text-apple-gray-700 mb-2"
+                  >
                     Your Name
                   </label>
                   <input
@@ -405,7 +827,10 @@ export default function LodgeInternetPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="feedbackEmail" className="block text-sm font-medium text-apple-gray-700 mb-2">
+                  <label
+                    htmlFor="feedbackEmail"
+                    className="block text-sm font-medium text-apple-gray-700 mb-2"
+                  >
                     Email Address
                   </label>
                   <input
@@ -485,14 +910,23 @@ export default function LodgeInternetPage() {
                 )}
 
                 <div>
-                  <label htmlFor="feedbackMessage" className="block text-sm font-medium text-apple-gray-700 mb-2">
-                    {feedbackType === "review" ? "Your Review" : "Your Complaint"}
+                  <label
+                    htmlFor="feedbackMessage"
+                    className="block text-sm font-medium text-apple-gray-700 mb-2"
+                  >
+                    {feedbackType === "review"
+                      ? "Your Review"
+                      : "Your Complaint"}
                   </label>
                   <textarea
                     id="feedbackMessage"
                     value={feedbackMessage}
                     onChange={(e) => setFeedbackMessage(e.target.value)}
-                    placeholder={feedbackType === "review" ? "Share your experience..." : "Describe your issue..."}
+                    placeholder={
+                      feedbackType === "review"
+                        ? "Share your experience..."
+                        : "Describe your issue..."
+                    }
                     required
                     rows={4}
                     className="w-full px-4 py-3 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none text-base transition-colors resize-none"
@@ -522,7 +956,8 @@ export default function LodgeInternetPage() {
                 Thank You for Your Feedback!
               </h3>
               <p className="text-green-700">
-                We appreciate you taking the time to share your thoughts with us.
+                We appreciate you taking the time to share your thoughts with
+                us.
               </p>
             </div>
           </div>
@@ -540,16 +975,18 @@ export default function LodgeInternetPage() {
               Select a data plan and get instant access to high-speed internet
             </p>
 
-            {/* Device Count Toggle */}
+            {/* Device/TV Type Toggle */}
             <div className="inline-flex items-center gap-2 bg-apple-gray-100 rounded-2xl p-2 shadow-inner">
               <button
                 onClick={() => {
+                  setPlanView("device");
                   setSelectedDeviceCount(3);
                   setSelectedPlanId("");
+                  setTvPurchaseStep(null);
                 }}
-                className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 ${
-                  selectedDeviceCount === 3
-                    ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg"
+                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                  planView === "device" && selectedDeviceCount === 3
+                    ? "bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white shadow-lg"
                     : "text-apple-gray-700 hover:text-apple-gray-900"
                 }`}
               >
@@ -557,16 +994,33 @@ export default function LodgeInternetPage() {
               </button>
               <button
                 onClick={() => {
+                  setPlanView("device");
                   setSelectedDeviceCount(5);
                   setSelectedPlanId("");
+                  setTvPurchaseStep(null);
                 }}
-                className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 ${
-                  selectedDeviceCount === 5
-                    ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg"
+                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                  planView === "device" && selectedDeviceCount === 5
+                    ? "bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white shadow-lg"
                     : "text-apple-gray-700 hover:text-apple-gray-900"
                 }`}
               >
                 <Smartphone className="w-5 h-5 inline-block mr-2" />5 Devices
+              </button>
+              <button
+                onClick={() => {
+                  setPlanView("tv");
+                  setSelectedPlanId("");
+                  setTvPurchaseStep(null);
+                }}
+                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                  planView === "tv"
+                    ? "bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white shadow-lg"
+                    : "text-apple-gray-700 hover:text-apple-gray-900"
+                }`}
+              >
+                <Tv className="w-5 h-5 inline-block mr-2" />
+                TV Unlimited
               </button>
             </div>
           </div>
@@ -598,136 +1052,223 @@ export default function LodgeInternetPage() {
           ) : (
             <>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-6xl mx-auto mb-12">
-                {displayPlans.map((plan) => (
-                  <div
-                    key={plan.id}
-                    onClick={() => setSelectedPlanId(plan.id)}
-                    className={`group relative bg-white rounded-3xl shadow-sm p-8 cursor-pointer transition-all duration-300 border-2 ${
-                      selectedPlanId === plan.id
-                        ? "border-blue-500 shadow-2xl scale-105 bg-gradient-to-br from-blue-50 to-purple-50"
-                        : "border-apple-gray-200 hover:border-blue-300 hover:shadow-xl hover:scale-102"
-                    }`}
-                  >
-                    {selectedPlanId === plan.id && (
-                      <div className="absolute -top-3 -right-3 w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
-                        <svg
-                          className="w-6 h-6 text-white"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                          strokeWidth={3}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
+                {displayPlans.map((plan) => {
+                  const availability = planAvailability[plan.id];
+                  const isDevicePlan = plan.planType === "device";
+                  const isAvailable =
+                    !isDevicePlan || availability?.available !== false;
+                  const codeCount = availability?.count || 0;
 
-                    <div className="text-center">
-                      <div
-                        className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-6 transition-all duration-300 ${
-                          selectedPlanId === plan.id
-                            ? "bg-gradient-to-br from-blue-600 to-purple-600 shadow-lg"
-                            : "bg-apple-gray-100 group-hover:bg-blue-100"
-                        }`}
-                      >
-                        <Wifi
-                          className={`w-8 h-8 ${selectedPlanId === plan.id ? "text-white" : "text-apple-gray-700 group-hover:text-blue-600"}`}
-                          strokeWidth={2.5}
-                        />
-                      </div>
+                  return (
+                    <div
+                      key={plan.id}
+                      onClick={() => isAvailable && setSelectedPlanId(plan.id)}
+                      className={`group relative bg-white rounded-3xl shadow-sm p-8 transition-all duration-300 border-2 ${
+                        !isAvailable
+                          ? "border-apple-gray-200 bg-apple-gray-50 cursor-not-allowed opacity-60"
+                          : selectedPlanId === plan.id
+                            ? "border-blue-500 shadow-2xl scale-105 bg-gradient-to-br from-blue-50 to-purple-50 cursor-pointer"
+                            : "border-apple-gray-200 hover:border-blue-300 hover:shadow-xl hover:scale-102 cursor-pointer"
+                      }`}
+                    >
+                      {selectedPlanId === plan.id && (
+                        <div className="absolute -top-3 -right-3 w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
+                          <svg
+                            className="w-6 h-6 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            strokeWidth={3}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      )}
 
-                      <h3 className="text-2xl font-semibold text-apple-gray-900 mb-4">
-                        {plan.name}
-                      </h3>
-
-                      <div className="mb-6">
-                        <span
-                          className={`text-5xl font-semibold ${
+                      <div className="text-center">
+                        <div
+                          className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-6 transition-all duration-300 ${
                             selectedPlanId === plan.id
-                              ? "bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
-                              : "text-apple-gray-900"
+                              ? "bg-gradient-to-br from-blue-600 to-purple-600 shadow-lg"
+                              : "bg-apple-gray-100 group-hover:bg-blue-100"
                           }`}
                         >
-                          ₦{plan.price.toLocaleString()}
-                        </span>
-                      </div>
+                          <Wifi
+                            className={`w-8 h-8 ${selectedPlanId === plan.id ? "text-white" : "text-apple-gray-700 group-hover:text-blue-600"}`}
+                            strokeWidth={2.5}
+                          />
+                        </div>
 
-                      <div className="text-sm text-apple-gray-600 font-medium">
-                        Monthly Plan • {selectedDeviceCount} Devices
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                        <h3 className="text-2xl font-semibold text-apple-gray-900 mb-4">
+                          {plan.name}
+                        </h3>
 
-              {selectedPlan && (
-                <form
-                  className="max-w-3xl mx-auto bg-gradient-to-br from-apple-gray-50 to-white rounded-3xl shadow-lg p-8 border border-apple-gray-200"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handlePurchase();
-                  }}
-                >
-                  <div className="mb-6">
-                    <label htmlFor="email" className="block text-sm text-apple-gray-700 mb-2 font-medium">
-                      Email Address (for receipt)
-                    </label>
-                    <input
-                      type="email"
-                      id="email"
-                      value={email}
-                      onChange={handleEmailChange}
-                      placeholder="your.email@example.com"
-                      required
-                      className="w-full px-4 py-4 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none text-base transition-colors"
-                    />
-                  </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
-                    <div className="flex-1">
-                      <p className="text-sm text-apple-gray-600 mb-2 font-medium uppercase tracking-wide">
-                        Selected Plan
-                      </p>
-                      <p className="text-2xl font-semibold text-apple-gray-900 mb-1">
-                        {selectedPlan.name}
-                      </p>
-                      <p className="text-lg text-apple-gray-600 flex items-center gap-2 mb-3">
-                        <Smartphone className="w-5 h-5" />
-                        {selectedDeviceCount} Devices
-                      </p>
-                      <div className="text-sm text-apple-gray-600 space-y-1">
-                        <p className="flex justify-between">
-                          <span>Plan Price:</span>
-                          <span className="font-semibold">₦{selectedPlan.price.toLocaleString()}</span>
-                        </p>
-                        <p className="flex justify-between">
-                          <span>Bank Charges:</span>
-                          <span className="font-semibold">₦100</span>
-                        </p>
-                        <div className="border-t border-apple-gray-300 pt-1 mt-1">
-                          <p className="flex justify-between text-base font-bold text-apple-gray-900">
-                            <span>Total:</span>
-                            <span>₦{(selectedPlan.price + 100).toLocaleString()}</span>
-                          </p>
+                        <div className="mb-6">
+                          <span
+                            className={`text-5xl font-semibold ${
+                              selectedPlanId === plan.id
+                                ? "bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
+                                : "text-apple-gray-900"
+                            }`}
+                          >
+                            ₦{plan.price.toLocaleString()}
+                          </span>
+                        </div>
+
+                        <div className="text-sm text-apple-gray-600 font-medium">
+                          {plan.planType === "tv"
+                            ? `${plan.duration} Days Subscription`
+                            : `Monthly Plan • ${plan.usersCount} Device${plan.usersCount !== 1 ? "s" : ""}`}
                         </div>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
+
+              {selectedPlan && (
+                <div className="max-w-3xl mx-auto bg-gradient-to-br from-apple-gray-50 to-white rounded-3xl shadow-lg p-8 border border-apple-gray-200">
+                  <div className="mb-6">
+                    <p className="text-sm text-apple-gray-600 mb-2 font-medium uppercase tracking-wide">
+                      Selected Plan
+                    </p>
+                    <p className="text-2xl font-semibold text-apple-gray-900 mb-1">
+                      {selectedPlan.name}
+                    </p>
+                    <p className="text-lg text-apple-gray-600 flex items-center gap-2 mb-3">
+                      {selectedPlan.planType === "tv" ? (
+                        <>
+                          <Tv className="w-5 h-5" />
+                          {selectedPlan.duration} Days Subscription
+                        </>
+                      ) : (
+                        <>
+                          <Smartphone className="w-5 h-5" />
+                          {selectedPlan.usersCount} Device
+                          {selectedPlan.usersCount !== 1 ? "s" : ""}
+                        </>
+                      )}
+                    </p>
+                    <div className="text-sm text-apple-gray-600 space-y-1">
+                      <p className="flex justify-between">
+                        <span>Plan Price:</span>
+                        <span className="font-semibold">
+                          ₦{selectedPlan.price.toLocaleString()}
+                        </span>
+                      </p>
+                      <p className="flex justify-between">
+                        <span>Bank Charges:</span>
+                        <span className="font-semibold">₦100</span>
+                      </p>
+                      <div className="border-t border-apple-gray-300 pt-1 mt-1">
+                        <p className="flex justify-between text-base font-bold text-apple-gray-900">
+                          <span>Total:</span>
+                          <span>
+                            ₦{(selectedPlan.price + 100).toLocaleString()}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {selectedPlan.planType === "device" ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handlePurchase();
+                      }}
+                    >
+                      <div className="mb-6">
+                        <label
+                          htmlFor="email"
+                          className="block text-sm text-apple-gray-700 mb-2 font-medium"
+                        >
+                          Email Address (for receipt)
+                        </label>
+                        <input
+                          type="email"
+                          id="email"
+                          value={email}
+                          onChange={handleEmailChange}
+                          placeholder="your.email@example.com"
+                          required
+                          className="w-full px-4 py-4 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none text-base transition-colors"
+                        />
+                      </div>
+
+                      {(() => {
+                        const availability = planAvailability[selectedPlan.id];
+                        const isAvailable = availability?.available !== false;
+                        const isDevicePlan = selectedPlan.planType === "device";
+                        const codesNotAvailable = isDevicePlan && !isAvailable;
+
+                        return (
+                          <>
+                            {codesNotAvailable && (
+                              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <div className="flex items-center gap-2 text-red-600 text-sm font-medium">
+                                  <svg
+                                    className="w-4 h-4"
+                                    fill="currentColor"
+                                    viewBox="0 0 20 20"
+                                  >
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                  No codes available for this plan
+                                </div>
+                                <p className="text-red-500 text-xs mt-1">
+                                  Please select a different plan or try again
+                                  later.
+                                </p>
+                              </div>
+                            )}
+                            <button
+                              type="submit"
+                              disabled={
+                                purchasing ||
+                                !!revealedCode ||
+                                !paystackLoaded ||
+                                !email ||
+                                codesNotAvailable
+                              }
+                              className={`w-full font-semibold px-10 py-5 rounded-2xl transition-all duration-300 disabled:cursor-not-allowed shadow-xl text-lg ${
+                                codesNotAvailable
+                                  ? "bg-gray-400 text-gray-600 opacity-50"
+                                  : "bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white hover:opacity-90 hover:shadow-2xl transform hover:-translate-y-1 disabled:opacity-50"
+                              }`}
+                            >
+                              {codesNotAvailable
+                                ? "No Codes Available"
+                                : !paystackLoaded
+                                  ? "Loading payment..."
+                                  : purchasing
+                                    ? "Processing..."
+                                    : `Pay ₦${(selectedPlan.price + 100).toLocaleString()}`}
+                            </button>
+                          </>
+                        );
+                      })()}
+                    </form>
+                  ) : (
                     <button
-                      type="submit"
-                      disabled={purchasing || !!revealedCode || !paystackLoaded || !email}
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold px-10 py-5 rounded-2xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-2xl transform hover:-translate-y-1 text-lg whitespace-nowrap"
+                      onClick={handleTvPurchaseStart}
+                      disabled={purchasing || !paystackLoaded}
+                      className="w-full bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white font-semibold px-10 py-5 rounded-2xl hover:opacity-90 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-2xl transform hover:-translate-y-1 text-lg"
                     >
                       {!paystackLoaded
                         ? "Loading payment..."
-                        : purchasing
-                          ? "Processing..."
-                          : `Pay ₦${(selectedPlan.price + 100).toLocaleString()}`}
+                        : "Continue to Purchase"}
                     </button>
-                  </div>
-                </form>
+                  )}
+                </div>
               )}
             </>
           )}
@@ -851,6 +1392,232 @@ export default function LodgeInternetPage() {
           </div>
         </div>
       </section>
+
+      {/* TV Purchase Modals */}
+      {tvPurchaseStep === "email" && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 relative animate-fade-in">
+            <button
+              onClick={() => setTvPurchaseStep(null)}
+              className="absolute top-4 right-4 text-apple-gray-400 hover:text-apple-gray-600 transition-colors"
+            >
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-400 via-blue-500 to-purple-400 rounded-2xl mb-4">
+                <Tv className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-2xl font-semibold text-apple-gray-900 mb-2">
+                TV Unlimited Purchase
+              </h3>
+              <p className="text-apple-gray-600">
+                Enter your email to get started
+              </p>
+            </div>
+
+            {error && (
+              <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={handleEmailChange}
+                  placeholder="your.email@example.com"
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <button
+                onClick={handleTvEmailCheck}
+                disabled={purchasing}
+                className="w-full bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white font-semibold py-4 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {purchasing ? "Checking..." : "Continue"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tvPurchaseStep === "details" && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 relative animate-fade-in">
+            <button
+              onClick={() => setTvPurchaseStep(null)}
+              className="absolute top-4 right-4 text-apple-gray-400 hover:text-apple-gray-600 transition-colors"
+            >
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-400 via-blue-500 to-purple-400 rounded-2xl mb-4">
+                <Tv className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-2xl font-semibold text-apple-gray-900 mb-2">
+                Your Details
+              </h3>
+              <p className="text-apple-gray-600">
+                We need a few details to set up your account
+              </p>
+            </div>
+
+            {error && (
+              <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={tvName}
+                  onChange={(e) => setTvName(e.target.value)}
+                  placeholder="John Doe"
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                  TV MAC Address
+                </label>
+                <input
+                  type="text"
+                  value={tvMacAddress}
+                  onChange={(e) => setTvMacAddress(e.target.value)}
+                  placeholder="00:1A:2B:3C:4D:5E"
+                  className="w-full px-4 py-3 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none transition-colors font-mono"
+                />
+                <p className="mt-1 text-xs text-apple-gray-500">
+                  Find this in your TV's network settings
+                </p>
+              </div>
+
+              <button
+                onClick={handleTvDetailsSubmit}
+                disabled={purchasing}
+                className="w-full bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white font-semibold py-4 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {purchasing ? "Processing..." : "Proceed to Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tvPurchaseStep === "password" && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 relative animate-fade-in">
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl mb-4">
+                <svg
+                  className="w-8 h-8 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-semibold text-apple-gray-900 mb-2">
+                Payment Successful!
+              </h3>
+              <p className="text-apple-gray-600">
+                Create a password to access your dashboard
+              </p>
+            </div>
+
+            {error && (
+              <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={tvPassword}
+                  onChange={(e) => setTvPassword(e.target.value)}
+                  placeholder="Enter password (min. 6 characters)"
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-apple-gray-700 mb-2">
+                  Confirm Password
+                </label>
+                <input
+                  type="password"
+                  value={tvConfirmPassword}
+                  onChange={(e) => setTvConfirmPassword(e.target.value)}
+                  placeholder="Confirm password"
+                  className="w-full px-4 py-3 rounded-xl border-2 border-apple-gray-200 focus:border-blue-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <button
+                onClick={handleCreateAccount}
+                disabled={purchasing}
+                className="w-full bg-gradient-to-r from-blue-400 via-blue-500 to-purple-400 text-white font-semibold py-4 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {purchasing
+                  ? "Creating Account..."
+                  : "Create Account & Continue"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

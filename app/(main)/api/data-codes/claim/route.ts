@@ -13,6 +13,8 @@ import {
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 import { decryptCode } from "@/lib/dataCodeCrypto";
+import { sendEmail } from "@/lib/email/emailService";
+import { getDeviceCodeEmail } from "@/lib/email/emailTemplates";
 
 export async function POST(request: Request) {
   if (!isFirebaseConfigured() || !db) {
@@ -25,7 +27,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const planId = typeof body.planId === "string" ? body.planId.trim() : "";
-    const customerEmail = typeof body.email === "string" ? body.email.trim() : "";
+    const customerEmail =
+      typeof body.email === "string" ? body.email.trim() : "";
 
     if (!planId) {
       return NextResponse.json({ error: "Missing planId" }, { status: 400 });
@@ -54,12 +57,9 @@ export async function POST(request: Request) {
     // Get plan details
     const planRef = doc(db, "dataPlans", planId);
     const planDoc = await getDoc(planRef);
-    
+
     if (!planDoc.exists()) {
-      return NextResponse.json(
-        { error: "Plan not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Plan not found" }, { status: 404 });
     }
 
     const planData = planDoc.data();
@@ -77,6 +77,34 @@ export async function POST(request: Request) {
 
     // Delete the code
     await deleteDoc(codeDoc.ref);
+
+    // Send email to customer with the code
+    if (customerEmail && customerEmail !== "N/A") {
+      try {
+        const emailHtml = getDeviceCodeEmail({
+          customerEmail,
+          planName: planData.name,
+          usersCount: planData.usersCount || 0,
+          duration: planData.duration
+            ? `${planData.duration} days`
+            : "As specified",
+          price: planData.price,
+          code: decryptedCode,
+        });
+
+        await sendEmail({
+          to: customerEmail,
+          subject: `Your Lodge Internet Access Code - ${planData.name}`,
+          html: emailHtml,
+          senderName: "Lodge Internet",
+        });
+
+        console.log(`Access code email sent to ${customerEmail}`);
+      } catch (emailError) {
+        console.error("Error sending code email:", emailError);
+        // Don't fail the request if email fails
+      }
+    }
 
     return NextResponse.json({
       code: decryptedCode,

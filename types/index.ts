@@ -97,7 +97,9 @@ export interface Section {
 export interface DataPlan {
   id: string;
   name: string;
-  usersCount: number;
+  planType: "device" | "tv"; // Type of plan
+  usersCount?: number; // Only for device plans (3 or 5)
+  duration?: number; // Only for TV plans - duration in days
   price: number;
   isActive: boolean;
   createdAt: Date;
@@ -109,4 +111,25 @@ export interface DataCode {
   planId: string;
   codeMask: string;
   createdAt: Date;
+}
+
+export interface TVSubscription {
+  id: string;
+  userId: string; // Firebase Auth user ID
+  name: string;
+  email: string;
+  macAddressHash: string; // Encrypted TV MAC address for admin viewing
+  planId: string;
+  planName: string;
+  duration: number; // Duration in days
+  price: number;
+  paymentRef: string;
+  paymentStatus: "paid";
+  subscriptionStatus: "pending_activation" | "active" | "expired";
+  paidAt: Date;
+  activatedAt?: Date; // When admin activates
+  expiresAt?: Date; // Calculated from activatedAt + duration
+  expiryReminderSent?: boolean; // Flag to track if expiry reminder was sent
+  createdAt: Date;
+  updatedAt: Date;
 }

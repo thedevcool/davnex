@@ -18,6 +18,8 @@ import { Product, Section, Order, Category } from "@/types";
 import ProtectedRoute from "@/components/admin/ProtectedRoute";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/Toast";
+import ConfirmationModal from "@/components/ConfirmationModal";
 import Link from "next/link";
 import {
   Package,
@@ -53,6 +55,7 @@ export default function AdminDashboard() {
 
   const { logout } = useAuthStore();
   const router = useRouter();
+  const { addToast } = useToast();
 
   // Form state
   const [formData, setFormData] = useState({
@@ -79,6 +82,19 @@ export default function AdminDashboard() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
 
+  // Confirmation modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
   useEffect(() => {
     fetchProducts();
     fetchSections();
@@ -104,7 +120,11 @@ export default function AdminDashboard() {
       setProducts(productsData);
     } catch (error) {
       console.error("Error fetching products:", error);
-      alert("Failed to load products");
+      addToast({
+        type: "error",
+        title: "Loading Error",
+        message: "Failed to load products",
+      });
     } finally {
       setLoading(false);
     }
@@ -130,7 +150,11 @@ export default function AdminDashboard() {
       setSections(sectionsData);
     } catch (error) {
       console.error("Error fetching sections:", error);
-      alert("Failed to load sections");
+      addToast({
+        type: "error",
+        title: "Loading Error",
+        message: "Failed to load sections",
+      });
     }
   };
 
@@ -150,7 +174,11 @@ export default function AdminDashboard() {
       setOrders(ordersData);
     } catch (error) {
       console.error("Error fetching orders:", error);
-      alert("Failed to load orders");
+      addToast({
+        type: "error",
+        title: "Loading Error",
+        message: "Failed to load orders",
+      });
     }
   };
 
@@ -174,7 +202,11 @@ export default function AdminDashboard() {
       setCategories(categoriesData);
     } catch (error) {
       console.error("Error fetching categories:", error);
-      alert("Failed to load categories");
+      addToast({
+        type: "error",
+        title: "Loading Error",
+        message: "Failed to load categories",
+      });
     }
   };
 
@@ -206,7 +238,11 @@ export default function AdminDashboard() {
       console.log(`✅ Order ${orderId} status updated to ${newStatus}`);
     } catch (error) {
       console.error("Error updating order status:", error);
-      alert("Failed to update order status");
+      addToast({
+        type: "error",
+        title: "Update Failed",
+        message: "Failed to update order status",
+      });
     }
   };
 
@@ -337,20 +373,32 @@ export default function AdminDashboard() {
 
       if (editingProduct) {
         await updateDoc(doc(db, "products", editingProduct.id), productData);
-        alert("Product updated successfully!");
+        addToast({
+          type: "success",
+          title: "Product Updated",
+          message: "Product updated successfully!",
+        });
       } else {
         await addDoc(collection(db, "products"), {
           ...productData,
           createdAt: new Date(),
         });
-        alert("Product added successfully!");
+        addToast({
+          type: "success",
+          title: "Product Added",
+          message: "Product added successfully!",
+        });
       }
 
       resetForm();
       fetchProducts();
     } catch (error) {
       console.error("Error saving product:", error);
-      alert("Failed to save product");
+      addToast({
+        type: "error",
+        title: "Save Failed",
+        message: "Failed to save product",
+      });
     } finally {
       setUploading(false);
     }
@@ -378,8 +426,16 @@ export default function AdminDashboard() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this product?")) return;
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete Product",
+      message:
+        "Are you sure you want to delete this product? This action cannot be undone.",
+      onConfirm: () => confirmDeleteProduct(id),
+    });
+  };
 
+  const confirmDeleteProduct = async (id: string) => {
     if (!db) {
       alert("Database not initialized");
       return;
@@ -387,11 +443,19 @@ export default function AdminDashboard() {
 
     try {
       await deleteDoc(doc(db, "products", id));
-      alert("Product deleted successfully!");
+      addToast({
+        type: "success",
+        title: "Product Deleted",
+        message: "Product deleted successfully!",
+      });
       fetchProducts();
     } catch (error) {
       console.error("Error deleting product:", error);
-      alert("Failed to delete product");
+      addToast({
+        type: "error",
+        title: "Delete Failed",
+        message: "Failed to delete product",
+      });
     }
   };
 
@@ -491,8 +555,16 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteSection = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this section?")) return;
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete Section",
+      message:
+        "Are you sure you want to delete this section? This action cannot be undone.",
+      onConfirm: () => confirmDeleteSection(id),
+    });
+  };
 
+  const confirmDeleteSection = async (id: string) => {
     if (!db) {
       alert("Database not initialized");
       return;
@@ -637,10 +709,22 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteCategory = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this category?")) return;
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete Category",
+      message:
+        "Are you sure you want to delete this category? This action cannot be undone.",
+      onConfirm: () => confirmDeleteCategory(id),
+    });
+  };
 
+  const confirmDeleteCategory = async (id: string) => {
     if (!db) {
-      alert("Database not initialized");
+      addToast({
+        type: "error",
+        title: "Database Error",
+        message: "Database not initialized",
+      });
       return;
     }
 
@@ -2284,6 +2368,16 @@ NEXT_PUBLIC_BASE_URL=http://localhost:3000`}
           )}
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmModal.onConfirm}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        type="danger"
+        confirmText="Delete"
+      />
     </ProtectedRoute>
   );
 }
