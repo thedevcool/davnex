@@ -90,9 +90,9 @@ export default function AdminDashboard() {
     onConfirm: () => void;
   }>({
     isOpen: false,
-    title: '',
-    message: '',
-    onConfirm: () => {}
+    title: "",
+    message: "",
+    onConfirm: () => {},
   });
 
   useEffect(() => {

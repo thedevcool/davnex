@@ -685,6 +685,32 @@ export default function LodgeInternetPage() {
         </div>
 
         <div className="relative mx-auto max-w-wide px-4 sm:px-6 lg:px-8">
+          {/* Top Header Bar */}
+          <div className="flex justify-end mb-6">
+            {currentUser ? (
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-apple-gray-600">
+                  Welcome back, {currentUser.email?.split('@')[0]}
+                </span>
+                <button
+                  onClick={() => router.push("/internet/dashboard")}
+                  className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold px-6 py-3 rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                >
+                  <Tv className="w-4 h-4" />
+                  Dashboard
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => router.push("/internet/login")}
+                className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm text-apple-gray-900 font-semibold px-6 py-3 rounded-xl hover:bg-white hover:shadow-lg transition-all duration-300 border border-apple-gray-200 shadow-sm"
+              >
+                <Tv className="w-4 h-4" />
+                Sign In
+              </button>
+            )}
+          </div>
+
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
             {/* Left side - Logo and Title */}
             <div className="flex items-center gap-6">
