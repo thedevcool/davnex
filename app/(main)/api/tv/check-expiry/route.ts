@@ -20,6 +20,14 @@ import {
  * Can be manually triggered from admin panel
  */
 export async function POST(request: Request) {
+  // Verify cron secret for security
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   if (!isFirebaseConfigured() || !db) {
     return NextResponse.json(
       { error: "Firebase is not configured" },
@@ -117,6 +125,83 @@ export async function POST(request: Request) {
           );
           results.errors.push(`Failed to notify ${subscription.email}`);
         }
+      }
+    }
+
+    // Send admin summary email if there were any notifications sent
+    if (
+      (results.expiringSoonNotifications > 0 ||
+        results.expiredNotifications > 0) &&
+      process.env.ADMIN_EMAIL
+    ) {
+      try {
+        const adminSummary = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 20px; }
+              .stat-box { background: #f5f5f7; padding: 20px; border-radius: 8px; margin: 15px 0; }
+              .stat-number { font-size: 32px; font-weight: bold; color: #0071e3; }
+              .warning { color: #f59e0b; }
+              .error { color: #ef4444; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2>📊 TV Subscription Expiry Check Summary</h2>
+                <p style="margin: 5px 0 0 0; opacity: 0.9;">Daily automated check completed</p>
+              </div>
+              
+              <div class="stat-box">
+                <p style="margin: 0; color: #86868b;">Expiring Soon (24h warning sent)</p>
+                <p class="stat-number warning">${results.expiringSoonNotifications}</p>
+              </div>
+              
+              <div class="stat-box">
+                <p style="margin: 0; color: #86868b;">Subscriptions Expired</p>
+                <p class="stat-number error">${results.expiredNotifications}</p>
+              </div>
+              
+              ${
+                results.errors.length > 0
+                  ? `
+              <div class="stat-box" style="border-left: 4px solid #ef4444;">
+                <p style="margin: 0 0 10px 0; font-weight: 600; color: #991b1b;">⚠️ Errors (${results.errors.length})</p>
+                <ul style="margin: 0; padding-left: 20px; color: #86868b;">
+                  ${results.errors.map((err) => `<li>${err}</li>`).join("")}
+                </ul>
+              </div>
+              `
+                  : ""
+              }
+              
+              <p style="margin-top: 30px; color: #86868b;">
+                <a href="${process.env.NEXT_PUBLIC_BASE_URL}/admin/tv-users" style="color: #0071e3; text-decoration: none;">View TV Users Dashboard →</a>
+              </p>
+              
+              <p style="font-size: 12px; color: #86868b; margin-top: 30px;">
+                Automated report from Davnex Lodge Internet<br/>
+                ${new Date().toLocaleString()}
+              </p>
+            </div>
+          </body>
+          </html>
+        `;
+
+        await sendEmail({
+          to: process.env.ADMIN_EMAIL,
+          subject: `TV Subscription Expiry Summary - ${results.expiringSoonNotifications} expiring, ${results.expiredNotifications} expired`,
+          html: adminSummary,
+          senderName: "Davnex System",
+        });
+
+        console.log("Admin summary email sent successfully");
+      } catch (error) {
+        console.error("Error sending admin summary email:", error);
       }
     }
 

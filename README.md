@@ -11,6 +11,7 @@ A comprehensive platform combining premium accessories e-commerce with Lodge Int
 ### 🛍️ **E-Commerce Store Features**
 
 #### 🛒 Customer Features
+
 - **Modern Product Catalog** - Beautiful, responsive product browsing with advanced filtering
 - **Category Navigation** - Apple Store-style horizontal category navigation
 - **Product Detail Pages** - High-quality image galleries, descriptions, and specifications
@@ -22,6 +23,7 @@ A comprehensive platform combining premium accessories e-commerce with Lodge Int
 - **Mobile Responsive** - Perfect experience on all devices
 
 #### 🎨 Admin Dashboard
+
 - **Product Management** - Add, edit, and delete products with advanced options
 - **Category Management** - Create and organize product categories
 - **Section Management** - Organize homepage sections and layout
@@ -33,6 +35,7 @@ A comprehensive platform combining premium accessories e-commerce with Lodge Int
 ### 🌐 **Lodge Internet System**
 
 #### 📱 Device Access Codes (WiFi Plans)
+
 - **Multi-Device Plans** - 3-device and 5-device WiFi access plans
 - **Instant Code Generation** - Encrypted access codes for secure WiFi access
 - **Automated Email Delivery** - Customers receive access codes via email instantly
@@ -41,6 +44,7 @@ A comprehensive platform combining premium accessories e-commerce with Lodge Int
 - **Paystack Integration** - Secure payment processing for data plans
 
 #### 📺 TV Unlimited Subscriptions
+
 - **Subscription Management** - Duration-based TV access plans
 - **User Account System** - Individual dashboards for TV subscribers
 - **MAC Address Encryption** - Secure storage of device identifiers
@@ -49,6 +53,7 @@ A comprehensive platform combining premium accessories e-commerce with Lodge Int
 - **Renewal System** - Easy subscription renewal process
 
 #### 📧 Advanced Email Notification System
+
 - **Device Code Emails** - Instant delivery of access codes with plan details
 - **TV Subscription Lifecycle** - Creation, activation, expiry warnings, and expired notifications
 - **Admin Notifications** - Real-time alerts for new subscriptions requiring activation
@@ -56,10 +61,11 @@ A comprehensive platform combining premium accessories e-commerce with Lodge Int
 - **Email Preferences** - User control over notification types
 
 #### 👨‍💼 Lodge Internet Admin Features
+
 - **Data Code Dashboard** - Monitor code inventory, add bulk codes, view purchase logs
 - **TV User Management** - Activate subscriptions, manage users, handle renewals
 - **Purchase Analytics** - Track revenue, popular plans, and user activity
-- **Expiry Management** - Automated expiry checking with email notifications
+- **Automated Expiry Monitoring** - Daily cron jobs check subscriptions and send notifications (see [CRON_JOB_GUIDE.md](./CRON_JOB_GUIDE.md))
 - **Customer Feedback** - Review system and complaint management
 - **MAC Address Migration** - Tools for updating user device information
 
@@ -115,7 +121,7 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY=pk_test_your_public_key
 NEXT_PUBLIC_PAYSTACK_SECRET_KEY=sk_test_your_secret_key
 
-# Cloudinary Configuration (Image CDN)  
+# Cloudinary Configuration (Image CDN)
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=your_cloud_name
 NEXT_PUBLIC_CLOUDINARY_API_KEY=your_api_key
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=your_upload_preset
@@ -127,26 +133,30 @@ ADMIN_PASSWORD=davo
 # Lodge Internet Security (Server-side only)
 DATA_CODE_SECRET_KEY=your_32_byte_hex_encryption_key
 
+# Cron Job Authentication
+CRON_SECRET=your_random_secret_key_for_cron_jobs
+
 # Email Configuration (SMTP)
 EMAIL_APP_PASSWORD=your_gmail_app_password
-EMAIL_FROM=your_email@gmail.com  
+EMAIL_FROM=your_email@gmail.com
 ADMIN_EMAIL=admin_notifications@gmail.com
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 ```
 
 ### Environment Variables Explained
 
-| Variable | Purpose | Required |
-|----------|---------|----------|
-| `NEXT_PUBLIC_FIREBASE_*` | Firebase SDK configuration | ✅ Yes |
-| `NEXT_PUBLIC_PAYSTACK_*` | Payment processing | ✅ Yes |
-| `NEXT_PUBLIC_CLOUDINARY_*` | Image hosting & optimization | ✅ Yes |
-| `ADMIN_USERNAME/PASSWORD` | Admin dashboard access | ✅ Yes |
-| `DATA_CODE_SECRET_KEY` | Encrypts Lodge Internet access codes | ✅ Yes |
-| `EMAIL_APP_PASSWORD` | Gmail SMTP authentication | ✅ Yes |
-| `EMAIL_FROM` | Sender email address | ✅ Yes |
-| `ADMIN_EMAIL` | Receives subscription notifications | ✅ Yes |
-| `NEXT_PUBLIC_BASE_URL` | Used in email templates | ✅ Yes |
+| Variable                   | Purpose                              | Required |
+| -------------------------- | ------------------------------------ | -------- |
+| `NEXT_PUBLIC_FIREBASE_*`   | Firebase SDK configuration           | ✅ Yes   |
+| `NEXT_PUBLIC_PAYSTACK_*`   | Payment processing                   | ✅ Yes   |
+| `NEXT_PUBLIC_CLOUDINARY_*` | Image hosting & optimization         | ✅ Yes   |
+| `ADMIN_USERNAME/PASSWORD`  | Admin dashboard access               | ✅ Yes   |
+| `DATA_CODE_SECRET_KEY`     | Encrypts Lodge Internet access codes | ✅ Yes   |
+| `CRON_SECRET`              | Authenticates automated cron jobs    | ✅ Yes   |
+| `EMAIL_APP_PASSWORD`       | Gmail SMTP authentication            | ✅ Yes   |
+| `EMAIL_FROM`               | Sender email address                 | ✅ Yes   |
+| `ADMIN_EMAIL`              | Receives subscription notifications  | ✅ Yes   |
+| `NEXT_PUBLIC_BASE_URL`     | Used in email templates              | ✅ Yes   |
 
 3. **Run Development Server**
 
@@ -163,7 +173,7 @@ Open [http://localhost:3000](http://localhost:3000) 🎉
 ```
 davnex/
 ├── app/                          # Next.js 14 App Router
-│   ├── (main)/                   # Main e-commerce application  
+│   ├── (main)/                   # Main e-commerce application
 │   │   ├── admin/
 │   │   │   ├── dashboard/        # Product & content management
 │   │   │   ├── data-codes/       # Lodge Internet code management
@@ -223,6 +233,8 @@ davnex/
 │   ├── useProducts.ts            # Product fetching & management
 │   └── useRecentlyViewed.ts      # User browsing history
 ├── .env.local                    # Environment variables (secrets)
+├── vercel.json                   # Vercel deployment & cron configuration
+├── CRON_JOB_GUIDE.md             # Automated expiry monitoring guide
 ├── EMAIL_NOTIFICATIONS_GUIDE.md # Email system documentation
 ├── QUICK_START.md                # 5-minute setup guide
 └── TIMESTAMP_FIX.md              # Firebase timestamp handling guide
@@ -231,21 +243,25 @@ davnex/
 ### Key Directories Explained
 
 #### `app/(main)/` - E-Commerce Platform
+
 - **Admin dashboards** with full CRUD for products, categories, orders, and Lodge Internet services
 - **API routes** for all business logic including payments, notifications, and data management
 - **Customer-facing pages** for browsing, shopping, and checkout
 
-#### `app/(standalone)/internet/` - Lodge Internet Portal  
+#### `app/(standalone)/internet/` - Lodge Internet Portal
+
 - **Standalone application** for Lodge Internet services separate from e-commerce
 - **Device code purchasing** with instant delivery and Paystack integration
 - **TV subscription management** with user dashboards and account creation
 
 #### `lib/email/` - Advanced Email System
+
 - **Professional HTML templates** for all customer communications
 - **Automated lifecycle emails** for subscriptions, renewals, and expiry warnings
 - **Admin notifications** for new subscriptions requiring activation
 
 #### Security & Encryption (`lib/...Crypto.ts`)
+
 - **AES-256 encryption** for sensitive access codes and device identifiers
 - **Hash functions** for secure data storage while maintaining admin visibility
 - **Environment variable protection** for all encryption keys
@@ -262,7 +278,7 @@ davnex/
 
 2. **Product Management**
    - Click "Add New Product"
-   - Upload images via Cloudinary 
+   - Upload images via Cloudinary
    - Set pricing with optional discount display
    - Configure stock quantities and availability dates
    - Set category and featured status
@@ -281,9 +297,10 @@ davnex/
 ### 🌐 Lodge Internet Management
 
 #### Data Codes (WiFi Access)
+
 1. **Code Management** (`/admin/data-codes`)
    - **Bulk Upload**: Upload hundreds of encrypted access codes
-   - **Monitor Inventory**: Track code availability by plan (3-device, 5-device)  
+   - **Monitor Inventory**: Track code availability by plan (3-device, 5-device)
    - **Purchase Logs**: View all code sales with customer details
    - **Customer Feedback**: Review customer reviews and handle complaints
 
@@ -294,6 +311,7 @@ davnex/
    - Code is permanently deleted from inventory
 
 #### TV Unlimited Subscriptions
+
 1. **Subscription Management** (`/admin/tv-users`)
    - **Pending Tab**: New subscriptions requiring activation
    - **Active Tab**: Currently active subscribers with expiry dates
@@ -305,9 +323,12 @@ davnex/
    - Access renewal options
    - Update account information
 
-3. **Automated Features**
-   - **Expiry Checking**: Automatic daily checks for expiring/expired subscriptions
-   - **Email Notifications**: 24-hour expiry warnings and expiry notifications
+3. **Automated Features** (🕐 **[CRON_JOB_GUIDE.md](./CRON_JOB_GUIDE.md)**)
+   - **Daily Cron Jobs**: Automated subscription monitoring via Vercel Cron or GitHub Actions
+   - **Expiry Checking**: Automatic daily checks for expiring/expired subscriptions at 9 AM UTC
+   - **24-Hour Warnings**: Email notifications sent to customers 24 hours before expiry
+   - **Expiry Notifications**: Automatic status updates and customer notifications when subscriptions expire
+   - **Admin Summaries**: Daily email reports with statistics and actionable insights
    - **MAC Address Security**: Device identifiers encrypted for privacy
 
 ### 📧 Email System
@@ -315,12 +336,14 @@ davnex/
 The platform automatically sends professional HTML emails for:
 
 #### Device Codes
+
 - **Purchase Confirmation**: Includes access code, plan details, and usage instructions
 - **Sent to**: Customer immediately after payment
 
-#### TV Subscriptions  
+#### TV Subscriptions
+
 - **Creation**: Welcome email with subscription details (pending activation)
-- **Activation**: Confirmation when admin activates subscription  
+- **Activation**: Confirmation when admin activates subscription
 - **Expiry Warning**: 24-hour reminder with renewal link
 - **Expired**: Service inactive notification with renewal options
 - **Admin Alerts**: New subscription notifications requiring activation
@@ -328,6 +351,7 @@ The platform automatically sends professional HTML emails for:
 ### 🛒 Customer Shopping Flow
 
 #### E-Commerce
+
 1. **Browse** - View products with category filtering
 2. **Filter** - Use category navigation or search
 3. **Select** - Click product for detailed view with image gallery
@@ -336,48 +360,53 @@ The platform automatically sends professional HTML emails for:
 6. **Track** - Order status updates and email notifications
 
 #### Lodge Internet
+
 1. **Select Plan** - Choose device (WiFi) or TV plan at `/internet`
 2. **Payment** - Secure Paystack processing
 3. **Device Codes**: Instant email delivery with access instructions
 4. **TV Subscriptions**: Account creation + admin activation workflow
 5. **Management** - Dashboard access for TV users
-2. **Select** - Click product to view details
-3. **Add to Cart** - Click "Add to Cart" button
-4. **Checkout** - Click cart icon, proceed to checkout
-5. **Pay** - Complete payment via Paystack
-6. **Confirm** - Receive order confirmation
+6. **Select** - Click product to view details
+7. **Add to Cart** - Click "Add to Cart" button
+8. **Checkout** - Click cart icon, proceed to checkout
+9. **Pay** - Complete payment via Paystack
+10. **Confirm** - Receive order confirmation
 
 ---
 
 ## 🔧 Tech Stack
 
 ### Core Technologies
+
 | Technology             | Purpose                         |
 | ---------------------- | ------------------------------- |
 | **Next.js 14**         | React framework with App Router |
 | **TypeScript**         | Type-safe development           |
 | **Tailwind CSS**       | Utility-first styling           |
 | **Firebase Firestore** | NoSQL database                  |
-| **Firebase Storage**   | File storage (legacy products) |
+| **Firebase Storage**   | File storage (legacy products)  |
 | **Zustand**            | State management                |
 
 ### Payment & Services
-| Service                | Purpose                         |
-| ---------------------- | ------------------------------- |
-| **Paystack**           | Payment processing              |
-| **Cloudinary**         | CDN & image optimization        |
-| **Nodemailer**         | Email delivery service          |
+
+| Service        | Purpose                  |
+| -------------- | ------------------------ |
+| **Paystack**   | Payment processing       |
+| **Cloudinary** | CDN & image optimization |
+| **Nodemailer** | Email delivery service   |
 
 ### Lodge Internet Technologies
-| Technology             | Purpose                         |
-| ---------------------- | ------------------------------- |
-| **Crypto (Node.js)**   | AES-256 encryption for codes    |
-| **MAC Address Hashing** | Secure device identification   |
-| **SMTP Email**         | Transactional notifications     |
-| **Firebase Auth**      | User authentication & sessions  |
+
+| Technology              | Purpose                         |
+| ----------------------- | ------------------------------- |
+| **Crypto (Node.js)**    | AES-256 encryption for codes    |
+| **MAC Address Hashing** | Secure device identification    |
+| **SMTP Email**          | Transactional notifications     |
+| **Firebase Auth**       | User authentication & sessions  |
 | **Automated Cron Jobs** | Expiry checking & notifications |
 
 ### Development Tools
+
 | Tool                   | Purpose                         |
 | ---------------------- | ------------------------------- |
 | **Lucide React**       | Icon library                    |
@@ -411,12 +440,13 @@ Use these test cards in **test mode**:
 ### Vercel (Recommended)
 
 1. **Prepare for Deployment**
+
    ```bash
    npm run build  # Test build locally
    ```
 
 2. **Deploy to Vercel**
-   - Push code to GitHub/GitLab  
+   - Push code to GitHub/GitLab
    - Import project in [Vercel](https://vercel.com)
    - Add all environment variables from `.env.local`
    - Deploy!
@@ -430,16 +460,18 @@ Use these test cards in **test mode**:
 ### Environment Variables for Production
 
 **⚠️ Required for deployment:**
+
 ```env
 # All NEXT_PUBLIC_* variables (Firebase, Paystack, Cloudinary)
-# EMAIL_* variables for notifications  
+# EMAIL_* variables for notifications
 # DATA_CODE_SECRET_KEY for Lodge Internet security
 # ADMIN_* credentials (change defaults!)
 ```
 
 **Critical Security:**
+
 - Generate new encryption keys for `DATA_CODE_SECRET_KEY`
-- Change default admin credentials  
+- Change default admin credentials
 - Enable Firebase security rules
 - Use Paystack live keys only after verification
 
@@ -452,7 +484,7 @@ Use these test cards in **test mode**:
    - Use different encryption keys for production
    - Rotate keys periodically for enhanced security
 
-2. **Admin Security**  
+2. **Admin Security**
    - Change default admin password immediately
    - Use strong passwords (12+ characters)
    - Consider implementing 2FA for production
@@ -477,7 +509,7 @@ Use these test cards in **test mode**:
 ### ✅ E-Commerce Features (Implemented)
 
 - [x] **Product Management**: Full CRUD with advanced options (discounts, stock, coming soon dates)
-- [x] **Category System**: Apple Store-style navigation with dynamic categories  
+- [x] **Category System**: Apple Store-style navigation with dynamic categories
 - [x] **Advanced Inventory**: Stock badges, coming soon countdown timers, back-in-stock alerts
 - [x] **Shopping Cart**: Persistent cart with quantity management and session storage
 - [x] **Secure Checkout**: Paystack integration with Nigerian Naira support
@@ -489,6 +521,7 @@ Use these test cards in **test mode**:
 ### ✅ Lodge Internet Features (Implemented)
 
 #### Device Access Codes (WiFi)
+
 - [x] **Instant Code Delivery**: Encrypted access codes via email within seconds
 - [x] **Multi-Device Plans**: 3-device and 5-device WiFi access options
 - [x] **Bulk Code Management**: Admin tools for uploading and managing thousands of codes
@@ -496,7 +529,8 @@ Use these test cards in **test mode**:
 - [x] **Customer Feedback**: Review system and complaint management
 - [x] **Security**: AES-256 encryption for all access codes
 
-#### TV Unlimited Subscriptions  
+#### TV Unlimited Subscriptions
+
 - [x] **Subscription Lifecycle**: Complete flow from purchase to activation to expiry
 - [x] **User Dashboards**: Individual subscriber portals with account management
 - [x] **Admin Controls**: Manual activation, user management, and analytics
@@ -505,8 +539,9 @@ Use these test cards in **test mode**:
 - [x] **Renewal System**: Seamless subscription renewal workflow
 
 #### Email Notification System
+
 - [x] **Professional Templates**: HTML emails with consistent branding
-- [x] **Device Code Emails**: Instant delivery with plan details and instructions  
+- [x] **Device Code Emails**: Instant delivery with plan details and instructions
 - [x] **TV Subscription Emails**: Creation, activation, expiry warnings, and expired notifications
 - [x] **Admin Notifications**: Real-time alerts for actions requiring attention
 - [x] **SMTP Integration**: Reliable email delivery via Gmail/SMTP
@@ -514,7 +549,7 @@ Use these test cards in **test mode**:
 ### 🔐 Security Features (Implemented)
 
 - [x] **Data Encryption**: AES-256 for sensitive codes and device identifiers
-- [x] **Firebase Security Rules**: Comprehensive database access controls  
+- [x] **Firebase Security Rules**: Comprehensive database access controls
 - [x] **Admin Authentication**: Secure login with protected routes
 - [x] **Environment Security**: All secrets properly configured in environment variables
 - [x] **Payment Security**: Paystack integration with test/live mode support
@@ -523,14 +558,16 @@ Use these test cards in **test mode**:
 ### 🚀 Future Enhancements
 
 #### E-Commerce Improvements
+
 - [ ] **Customer Accounts**: User registration and order history
 - [ ] **Product Search**: Full-text search with filters and sorting
-- [ ] **Product Reviews**: Customer rating and review system  
+- [ ] **Product Reviews**: Customer rating and review system
 - [ ] **Wishlist System**: Save products for later purchase
 - [ ] **Multi-currency**: Support for USD, GBP alongside NGN
 - [ ] **Shipping Calculator**: Dynamic shipping costs based on location
 
-#### Lodge Internet Enhancements  
+#### Lodge Internet Enhancements
+
 - [ ] **Self-Service Activation**: Automated TV subscription activation
 - [ ] **Usage Analytics**: Data usage tracking for device codes
 - [ ] **Bulk Renewals**: Admin tools for bulk subscription management
@@ -539,8 +576,9 @@ Use these test cards in **test mode**:
 - [ ] **Advanced Reporting**: Business intelligence and analytics dashboard
 
 #### System-Wide Improvements
+
 - [ ] **Progressive Web App**: PWA features for better mobile experience
-- [ ] **Real-time Notifications**: WebSocket-based live updates  
+- [ ] **Real-time Notifications**: WebSocket-based live updates
 - [ ] **Backup Systems**: Automated data backup and recovery
 - [ ] **Multi-language**: Internationalization support
 - [ ] **Performance Monitoring**: Error tracking and performance analytics
@@ -552,6 +590,7 @@ Use these test cards in **test mode**:
 ### Documentation
 
 - **[QUICK_START.md](./QUICK_START.md)** - Fast setup and new features guide
+- **[CRON_JOB_GUIDE.md](./CRON_JOB_GUIDE.md)** - Automated TV subscription expiry monitoring
 - **[EMAIL_NOTIFICATIONS_GUIDE.md](./EMAIL_NOTIFICATIONS_GUIDE.md)** - Complete email system documentation
 - **[TIMESTAMP_FIX.md](./TIMESTAMP_FIX.md)** - Firebase timestamp handling guide
 
@@ -577,7 +616,7 @@ This project is for educational and commercial use. Built for Davnex Store and L
 Built with ❤️ using:
 
 - **Next.js 14** - React framework with App Router
-- **Firebase** - Database, authentication, and hosting  
+- **Firebase** - Database, authentication, and hosting
 - **Paystack** - Nigerian payment processing
 - **Cloudinary** - Image optimization and CDN
 - **Tailwind CSS** - Utility-first styling
@@ -590,24 +629,28 @@ Built with ❤️ using:
 ## 🌐 Application URLs
 
 ### E-Commerce Store
-- **Store Homepage:** http://localhost:3000  
-- **Admin Panel:** http://localhost:3000/admin/login  
+
+- **Store Homepage:** http://localhost:3000
+- **Admin Panel:** http://localhost:3000/admin/login
 - **Product Catalog:** http://localhost:3000 (main page)
 - **Shopping Cart:** http://localhost:3000/cart
 - **Checkout:** http://localhost:3000/checkout
 
-### Lodge Internet Portal  
+### Lodge Internet Portal
+
 - **Internet Portal:** http://localhost:3000/internet
 - **TV User Dashboard:** http://localhost:3000/internet/dashboard
 - **TV User Login:** http://localhost:3000/internet/login
 
 ### Admin Management
+
 - **Main Dashboard:** http://localhost:3000/admin/dashboard
-- **Data Codes Management:** http://localhost:3000/admin/data-codes  
+- **Data Codes Management:** http://localhost:3000/admin/data-codes
 - **TV Users Management:** http://localhost:3000/admin/tv-users
 - **Purchase Logs:** http://localhost:3000/admin/purchase-logs
 
 ### Default Credentials
+
 - **Admin Login:** `davo` / `davo`
 - **Change these in production!**
 
@@ -619,7 +662,7 @@ Built with ❤️ using:
 # Start development server
 npm run dev
 
-# Build for production  
+# Build for production
 npm run build
 
 # Start production server
@@ -633,4 +676,4 @@ npm run lint
 
 **Davnex - Premium Accessories & Lodge Internet Services** 🎉
 
-*Combining the best of e-commerce with innovative internet service delivery.*
+_Combining the best of e-commerce with innovative internet service delivery._

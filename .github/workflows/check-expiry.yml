@@ -1,0 +1,23 @@
+name: TV Subscription Expiry Check
+
+# Run daily at 9 AM UTC (adjust timezone as needed)
+on:
+  schedule:
+    - cron: "0 9 * * *" # Daily at 9:00 AM UTC
+
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  check-expiry:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check TV Subscription Expiry
+        run: |
+          curl -X POST ${{ secrets.APP_URL }}/api/tv/check-expiry \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json"
+
+      - name: Log completion
+        run: echo "Expiry check completed at $(date)"
