@@ -18,21 +18,15 @@ import {
  * API route to check for expiring and expired TV subscriptions
  * This should be called by a cron job daily
  * Can be manually triggered from admin panel
+ * 
+ * Supports:
+ * - GET: For Vercel Cron (internal, no auth needed)
+ * - POST: For external triggers (requires Bearer token)
  */
-export async function POST(request: Request) {
-  // Verify cron secret for security
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+async function checkSubscriptionExpiry() {
   if (!isFirebaseConfigured() || !db) {
-    return NextResponse.json(
-      { error: "Firebase is not configured" },
-      { status: 500 },
-    );
+    throw new Error("Firebase is not configured");
   }
 
   try {
@@ -205,13 +199,56 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({
+    return {
       success: true,
       message: "Expiry check completed",
       results,
-    });
+    };
   } catch (error: any) {
     console.error("Error checking subscription expiry:", error);
+    throw error;
+  }
+}
+
+/**
+ * GET handler for Vercel Cron Jobs (internal calls)
+ * Vercel cron runs in the same environment, no external auth needed
+ */
+export async function GET(request: Request) {
+  try {
+    console.log("GET /api/tv/check-expiry - Cron check started");
+    const result = await checkSubscriptionExpiry();
+    console.log("Cron check completed:", result);
+    return NextResponse.json(result);
+  } catch (error: any) {
+    console.error("GET handler error:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to check subscription expiry" },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * POST handler for external triggers (requires authentication)
+ * Used by GitHub Actions or manual admin triggers
+ */
+export async function POST(request: Request) {
+  // Verify cron secret for security on external calls
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    console.log("POST /api/tv/check-expiry - Manual/external check started");
+    const result = await checkSubscriptionExpiry();
+    console.log("Manual/external check completed:", result);
+    return NextResponse.json(result);
+  } catch (error: any) {
+    console.error("POST handler error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to check subscription expiry" },
       { status: 500 },

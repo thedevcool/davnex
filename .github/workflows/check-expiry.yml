@@ -14,10 +14,32 @@ jobs:
 
     steps:
       - name: Check TV Subscription Expiry
+        env:
+          APP_URL: ${{ secrets.APP_URL || 'https://davnex.vercel.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -X POST ${{ secrets.APP_URL }}/api/tv/check-expiry \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -H "Content-Type: application/json"
+          echo "Triggering expiry check at $APP_URL"
+          
+          # Make the API call with error handling
+          response=$(curl -s -w "\n%{http_code}" -X POST "$APP_URL/api/tv/check-expiry" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json")
+          
+          # Extract response body and status code
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "Response status: $http_code"
+          echo "Response body: $body"
+          
+          # Check if request was successful
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "✅ Expiry check completed successfully"
+          else
+            echo "❌ Expiry check failed with status $http_code"
+            exit 1
+          fi
 
       - name: Log completion
-        run: echo "Expiry check completed at $(date)"
+        if: always()
+        run: echo "Expiry check workflow completed at $(date)"

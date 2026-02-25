@@ -134,7 +134,7 @@ ADMIN_PASSWORD=davo
 DATA_CODE_SECRET_KEY=your_32_byte_hex_encryption_key
 
 # Cron Job Authentication
-CRON_SECRET=your_random_secret_key_for_cron_jobs
+CRON_SECRET=xkV0OTYlC2pnn4cVRQ8D3yZsXJhtmFvRw7LECcGVE1U=
 
 # Email Configuration (SMTP)
 EMAIL_APP_PASSWORD=your_gmail_app_password
