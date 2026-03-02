@@ -774,11 +774,11 @@ export default function AdminDashboard() {
 
   const handleSendEmail = async () => {
     if (!emailSubject.trim() || !emailMessage.trim()) {
-      addToast("Subject and message are required.", "error");
+      addToast({ type: "error", title: "Subject and message are required." });
       return;
     }
     if (emailMode === "direct" && !emailTo.trim()) {
-      addToast("Please enter at least one recipient email address.", "error");
+      addToast({ type: "error", title: "Please enter at least one recipient email address." });
       return;
     }
 
@@ -824,7 +824,7 @@ export default function AdminDashboard() {
           success: false,
           message: data.error || "Failed to send email.",
         });
-        addToast(data.error || "Failed to send email.", "error");
+        addToast({ type: "error", title: data.error || "Failed to send email." });
       } else {
         setEmailResult({
           success: true,
@@ -834,14 +834,14 @@ export default function AdminDashboard() {
           total: data.total,
           errors: data.errors,
         });
-        addToast(data.message, "success");
+        addToast({ type: "success", title: data.message });
       }
     } catch (err) {
       setEmailResult({
         success: false,
         message: "Network error. Please try again.",
       });
-      addToast("Network error. Please try again.", "error");
+      addToast({ type: "error", title: "Network error. Please try again." });
     } finally {
       setEmailSending(false);
     }
@@ -2428,7 +2428,7 @@ export default function AdminDashboard() {
                 <button
                   onClick={() => {
                     if (!emailMessage.trim()) {
-                      addToast("Write a message first to preview it.", "error");
+                      addToast({ type: "error", title: "Write a message first to preview it." });
                       return;
                     }
                     const win = window.open("", "_blank");
