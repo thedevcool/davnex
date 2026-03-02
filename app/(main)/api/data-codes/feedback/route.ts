@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { addDoc, collection, getDocs, orderBy, query } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  getDocs,
+  orderBy,
+  query,
+} from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 import { sendEmail } from "@/lib/email/emailService";
 import { getFeedbackNotificationEmail } from "@/lib/email/emailTemplates";
@@ -43,12 +49,12 @@ export async function POST(request: Request) {
     });
 
     // Send email notification to admin
-    const adminEmail = "adebayoayobamidavid@gmail.com";
-    
+    const adminEmail = "lodge.internet@gmail.com";
+
     try {
       await sendEmail({
         to: adminEmail,
-        subject: `New ${type === 'review' ? 'Review' : 'Complaint'} - ${planName}`,
+        subject: `New ${type === "review" ? "Review" : "Complaint"} - ${planName}`,
         html: getFeedbackNotificationEmail({
           name: name.trim(),
           email: email.trim(),
@@ -90,9 +96,9 @@ export async function GET() {
   try {
     const feedbackQuery = query(
       collection(db, "dataFeedback"),
-      orderBy("createdAt", "desc")
+      orderBy("createdAt", "desc"),
     );
-    
+
     const snapshot = await getDocs(feedbackQuery);
     const feedback = snapshot.docs.map((doc) => ({
       id: doc.id,
@@ -105,7 +111,7 @@ export async function GET() {
     console.error("Error fetching feedback:", error);
     return NextResponse.json(
       { error: "Failed to fetch feedback" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
