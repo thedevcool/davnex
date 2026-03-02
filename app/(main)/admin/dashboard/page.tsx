@@ -95,6 +95,26 @@ export default function AdminDashboard() {
     onConfirm: () => {},
   });
 
+  // Email management state
+  type EmailMode = "direct" | "broadcast";
+  const [emailMode, setEmailMode] = useState<EmailMode>("direct");
+  const [emailTo, setEmailTo] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [emailImageUrl, setEmailImageUrl] = useState("");
+  const [emailCtaText, setEmailCtaText] = useState("");
+  const [emailCtaUrl, setEmailCtaUrl] = useState("");
+  const [emailSenderName, setEmailSenderName] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailResult, setEmailResult] = useState<{
+    success: boolean;
+    message: string;
+    sent?: number;
+    failed?: number;
+    total?: number;
+    errors?: string[];
+  } | null>(null);
+
   useEffect(() => {
     fetchProducts();
     fetchSections();
@@ -750,6 +770,81 @@ export default function AdminDashboard() {
     setCategoryImagePreview("");
     setEditingCategory(null);
     setShowForm(false);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailSubject.trim() || !emailMessage.trim()) {
+      addToast("Subject and message are required.", "error");
+      return;
+    }
+    if (emailMode === "direct" && !emailTo.trim()) {
+      addToast("Please enter at least one recipient email address.", "error");
+      return;
+    }
+
+    setEmailSending(true);
+    setEmailResult(null);
+
+    try {
+      const endpoint =
+        emailMode === "direct"
+          ? "/api/email/send-direct"
+          : "/api/email/promotional";
+
+      const body =
+        emailMode === "direct"
+          ? {
+              to: emailTo,
+              subject: emailSubject,
+              message: emailMessage,
+              ctaText: emailCtaText || undefined,
+              ctaUrl: emailCtaUrl || undefined,
+              imageUrl: emailImageUrl || undefined,
+              senderName: emailSenderName || undefined,
+            }
+          : {
+              title: emailSubject,
+              message: emailMessage,
+              ctaText: emailCtaText || undefined,
+              ctaUrl: emailCtaUrl || undefined,
+              imageUrl: emailImageUrl || undefined,
+            };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setEmailResult({
+          success: false,
+          message: data.error || "Failed to send email.",
+        });
+        addToast(data.error || "Failed to send email.", "error");
+      } else {
+        setEmailResult({
+          success: true,
+          message: data.message,
+          sent: data.sent,
+          failed: data.failed,
+          total: data.total,
+          errors: data.errors,
+        });
+        addToast(data.message, "success");
+      }
+    } catch (err) {
+      setEmailResult({
+        success: false,
+        message: "Network error. Please try again.",
+      });
+      addToast("Network error. Please try again.", "error");
+    } finally {
+      setEmailSending(false);
+    }
   };
 
   const handleLogout = () => {
@@ -2100,215 +2195,285 @@ export default function AdminDashboard() {
 
           {/* Emails Tab */}
           {activeTab === "emails" && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-2xl font-bold text-apple-gray-900 mb-6">
+            <div className="bg-white rounded-xl shadow-sm p-6 space-y-6">
+              <h2 className="text-2xl font-bold text-apple-gray-900">
                 Email Management
               </h2>
 
-              {/* Stats */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Mail className="w-6 h-6 text-purple-600" />
-                    <span className="text-sm font-medium text-purple-900">
-                      Promotional
-                    </span>
-                  </div>
-                  <p className="text-3xl font-bold text-purple-900">
-                    {/* This will be populated from Firestore */}
-                    -- <span className="text-lg">users</span>
-                  </p>
-                  <p className="text-xs text-purple-700 mt-1">
-                    Opted-in for promos
-                  </p>
-                </div>
-
-                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Package className="w-6 h-6 text-green-600" />
-                    <span className="text-sm font-medium text-green-900">
-                      Stock Alerts
-                    </span>
-                  </div>
-                  <p className="text-3xl font-bold text-green-900">
-                    -- <span className="text-lg">users</span>
-                  </p>
-                  <p className="text-xs text-green-700 mt-1">
-                    Watching products
-                  </p>
-                </div>
-
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Package className="w-6 h-6 text-orange-600" />
-                    <span className="text-sm font-medium text-orange-900">
-                      Coming Soon
-                    </span>
-                  </div>
-                  <p className="text-3xl font-bold text-orange-900">
-                    -- <span className="text-lg">users</span>
-                  </p>
-                  <p className="text-xs text-orange-700 mt-1">
-                    Opted-in for new products
-                  </p>
-                </div>
+              {/* Mode selector */}
+              <div className="flex gap-2 bg-apple-gray-100 p-1 rounded-xl w-fit">
+                <button
+                  onClick={() => {
+                    setEmailMode("direct");
+                    setEmailResult(null);
+                  }}
+                  className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    emailMode === "direct"
+                      ? "bg-white shadow text-apple-gray-900"
+                      : "text-apple-gray-500 hover:text-apple-gray-700"
+                  }`}
+                >
+                  ✉️ Direct Email
+                </button>
+                <button
+                  onClick={() => {
+                    setEmailMode("broadcast");
+                    setEmailResult(null);
+                  }}
+                  className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    emailMode === "broadcast"
+                      ? "bg-white shadow text-apple-gray-900"
+                      : "text-apple-gray-500 hover:text-apple-gray-700"
+                  }`}
+                >
+                  📢 Broadcast
+                </button>
               </div>
 
-              {/* Promotional Email Composer */}
-              <div className="border border-apple-gray-200 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-apple-gray-900 mb-4 flex items-center gap-2">
-                  <Mail className="w-5 h-5 text-blue-600" />
-                  Send Promotional Email
-                </h3>
-
-                <div className="space-y-4">
-                  {/* Email Title */}
-                  <div>
-                    <label className="block text-sm font-medium text-apple-gray-700 mb-2">
-                      Email Subject *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g., Exclusive Weekend Sale - 30% Off!"
-                      className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  {/* Email Message */}
-                  <div>
-                    <label className="block text-sm font-medium text-apple-gray-700 mb-2">
-                      Email Message *
-                    </label>
-                    <textarea
-                      rows={8}
-                      placeholder="Write your promotional message here... You can use HTML for formatting."
-                      className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                    />
-                    <p className="mt-1 text-xs text-apple-gray-500">
-                      Tip: Use HTML tags for formatting (e.g., &lt;p&gt;,
-                      &lt;strong&gt;, &lt;br/&gt;)
-                    </p>
-                  </div>
-
-                  {/* Image URL */}
-                  <div>
-                    <label className="block text-sm font-medium text-apple-gray-700 mb-2">
-                      Image URL (optional)
-                    </label>
-                    <input
-                      type="url"
-                      placeholder="https://example.com/promo-image.jpg"
-                      className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* CTA Text */}
-                    <div>
-                      <label className="block text-sm font-medium text-apple-gray-700 mb-2">
-                        Button Text (optional)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g., Shop Now"
-                        className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    {/* CTA URL */}
-                    <div>
-                      <label className="block text-sm font-medium text-apple-gray-700 mb-2">
-                        Button Link (optional)
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://your-store.com/sale"
-                        className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Send Button */}
-                  <div className="flex gap-4 pt-4">
-                    <button
-                      className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:from-blue-600 hover:to-purple-700 transition-all flex items-center justify-center gap-2"
-                      onClick={() => {
-                        alert(
-                          "Email sending functionality - Connect to /api/email/promotional",
-                        );
-                      }}
-                    >
-                      <Mail className="w-5 h-5" />
-                      Send to All Opted-In Users
-                    </button>
-                    <button
-                      className="px-6 py-3 border border-apple-gray-300 rounded-lg font-medium text-apple-gray-700 hover:bg-apple-gray-50 transition-colors"
-                      onClick={() => {
-                        alert(
-                          "Preview functionality - Opens email preview in new window",
-                        );
-                      }}
-                    >
-                      Preview
-                    </button>
-                  </div>
-
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm text-blue-900">
-                      <strong>Note:</strong> This email will be sent to all
-                      users who opted-in for promotional emails. Recipients can
-                      manage their preferences at any time.
-                    </p>
-                  </div>
+              {/* Mode description */}
+              {emailMode === "direct" ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
+                  <strong>Direct Email</strong> – Send to one or more specific
+                  email addresses. Separate multiple addresses with commas.
                 </div>
+              ) : (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-3 text-sm text-purple-800">
+                  <strong>Broadcast</strong> – Send to <em>all users</em> who
+                  have opted in for promotional emails. This cannot be undone.
+                </div>
+              )}
+
+              {/* Recipient field – Direct only */}
+              {emailMode === "direct" && (
+                <div>
+                  <label className="block text-sm font-medium text-apple-gray-700 mb-1">
+                    To <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={emailTo}
+                    onChange={(e) => setEmailTo(e.target.value)}
+                    placeholder="user@example.com, another@example.com"
+                    className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                  <p className="mt-1 text-xs text-apple-gray-500">
+                    Separate multiple addresses with commas or new lines.
+                  </p>
+                </div>
+              )}
+
+              {/* Sender name – Direct only */}
+              {emailMode === "direct" && (
+                <div>
+                  <label className="block text-sm font-medium text-apple-gray-700 mb-1">
+                    From Name{" "}
+                    <span className="text-apple-gray-400 text-xs">
+                      (optional)
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    value={emailSenderName}
+                    onChange={(e) => setEmailSenderName(e.target.value)}
+                    placeholder="e.g. Davnex Store — defaults to 'Davnex Store'"
+                    className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+              )}
+
+              {/* Subject */}
+              <div>
+                <label className="block text-sm font-medium text-apple-gray-700 mb-1">
+                  Subject <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  placeholder="e.g. Exclusive Weekend Sale – 30% Off!"
+                  className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
               </div>
 
-              {/* Quick Actions */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                <div className="border border-apple-gray-200 rounded-xl p-4 hover:border-blue-500 transition-colors cursor-pointer">
-                  <h4 className="font-semibold text-apple-gray-900 mb-2">
-                    📧 Test Email Configuration
-                  </h4>
-                  <p className="text-sm text-apple-gray-600 mb-3">
-                    Send a test email to verify your setup is working correctly.
-                  </p>
-                  <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">
-                    Send Test Email →
-                  </button>
-                </div>
-
-                <div className="border border-apple-gray-200 rounded-xl p-4 hover:border-green-500 transition-colors cursor-pointer">
-                  <h4 className="font-semibold text-apple-gray-900 mb-2">
-                    📊 Email Stats
-                  </h4>
-                  <p className="text-sm text-apple-gray-600 mb-3">
-                    View detailed statistics about your email campaigns.
-                  </p>
-                  <button className="text-sm text-green-600 hover:text-green-700 font-medium">
-                    View Statistics →
-                  </button>
-                </div>
-              </div>
-
-              {/* Setup Instructions */}
-              <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                <h4 className="font-semibold text-yellow-900 mb-2">
-                  ⚙️ Email Setup Required
-                </h4>
-                <p className="text-sm text-yellow-800 mb-2">
-                  To enable email sending, configure your Google App Password in{" "}
-                  <code className="bg-yellow-100 px-1 rounded">.env.local</code>
-                  :
+              {/* Message */}
+              <div>
+                <label className="block text-sm font-medium text-apple-gray-700 mb-1">
+                  Message <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={9}
+                  value={emailMessage}
+                  onChange={(e) => setEmailMessage(e.target.value)}
+                  placeholder="Write your message here. HTML is supported – e.g. <p>, <strong>, <br/>, <ul>."
+                  className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                />
+                <p className="mt-1 text-xs text-apple-gray-500">
+                  HTML is supported. Use tags like{" "}
+                  <code className="bg-apple-gray-100 px-1 rounded">
+                    &lt;p&gt;
+                  </code>
+                  ,{" "}
+                  <code className="bg-apple-gray-100 px-1 rounded">
+                    &lt;strong&gt;
+                  </code>
+                  ,{" "}
+                  <code className="bg-apple-gray-100 px-1 rounded">
+                    &lt;a href="…"&gt;
+                  </code>
+                  .
                 </p>
-                <pre className="bg-yellow-100 p-3 rounded text-xs text-yellow-900 overflow-x-auto">
-                  {`EMAIL_USER=your-gmail@gmail.com
-EMAIL_APP_PASSWORD=your-16-char-app-password
-EMAIL_FROM=your-gmail@gmail.com
-NEXT_PUBLIC_BASE_URL=http://localhost:3000`}
-                </pre>
-                <p className="text-xs text-yellow-700 mt-2">
-                  See <code>EMAIL_SYSTEM_GUIDE.md</code> for detailed setup
-                  instructions.
+              </div>
+
+              {/* Optional extras */}
+              <div>
+                <label className="block text-sm font-medium text-apple-gray-700 mb-1">
+                  Header Image URL{" "}
+                  <span className="text-apple-gray-400 text-xs">
+                    (optional)
+                  </span>
+                </label>
+                <input
+                  type="url"
+                  value={emailImageUrl}
+                  onChange={(e) => setEmailImageUrl(e.target.value)}
+                  placeholder="https://example.com/promo-image.jpg"
+                  className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-apple-gray-700 mb-1">
+                    Button Text{" "}
+                    <span className="text-apple-gray-400 text-xs">
+                      (optional)
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    value={emailCtaText}
+                    onChange={(e) => setEmailCtaText(e.target.value)}
+                    placeholder="e.g. Shop Now"
+                    className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-apple-gray-700 mb-1">
+                    Button Link{" "}
+                    <span className="text-apple-gray-400 text-xs">
+                      (optional)
+                    </span>
+                  </label>
+                  <input
+                    type="url"
+                    value={emailCtaUrl}
+                    onChange={(e) => setEmailCtaUrl(e.target.value)}
+                    placeholder="https://your-store.com/sale"
+                    className="w-full px-4 py-2 border border-apple-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Result banner */}
+              {emailResult && (
+                <div
+                  className={`rounded-xl p-4 border ${
+                    emailResult.success
+                      ? "bg-green-50 border-green-200 text-green-800"
+                      : "bg-red-50 border-red-200 text-red-800"
+                  }`}
+                >
+                  <p className="font-semibold text-sm">
+                    {emailResult.success ? "✅" : "❌"} {emailResult.message}
+                  </p>
+                  {emailResult.success && emailResult.total !== undefined && (
+                    <div className="mt-2 flex gap-4 text-sm">
+                      <span className="text-green-700">
+                        Sent: <strong>{emailResult.sent}</strong>
+                      </span>
+                      {(emailResult.failed ?? 0) > 0 && (
+                        <span className="text-red-600">
+                          Failed: <strong>{emailResult.failed}</strong>
+                        </span>
+                      )}
+                      <span className="text-apple-gray-500">
+                        Total: {emailResult.total}
+                      </span>
+                    </div>
+                  )}
+                  {emailResult.errors && emailResult.errors.length > 0 && (
+                    <ul className="mt-2 text-xs list-disc list-inside opacity-80">
+                      {emailResult.errors.map((e, i) => (
+                        <li key={i}>{e}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleSendEmail}
+                  disabled={emailSending}
+                  className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:from-blue-600 hover:to-purple-700 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Mail className="w-5 h-5" />
+                  {emailSending
+                    ? "Sending…"
+                    : emailMode === "direct"
+                      ? "Send Email"
+                      : "Broadcast to Opted-In Users"}
+                </button>
+                <button
+                  onClick={() => {
+                    if (!emailMessage.trim()) {
+                      addToast("Write a message first to preview it.", "error");
+                      return;
+                    }
+                    const win = window.open("", "_blank");
+                    if (win) {
+                      win.document.write(
+                        `<html><head><title>Email Preview</title></head><body style="margin:0;background:#f5f5f7">${emailMessage}</body></html>`,
+                      );
+                      win.document.close();
+                    }
+                  }}
+                  className="px-5 py-3 border border-apple-gray-300 rounded-lg font-medium text-apple-gray-700 hover:bg-apple-gray-50 transition-colors text-sm"
+                >
+                  Preview
+                </button>
+                <button
+                  onClick={() => {
+                    setEmailTo("");
+                    setEmailSubject("");
+                    setEmailMessage("");
+                    setEmailImageUrl("");
+                    setEmailCtaText("");
+                    setEmailCtaUrl("");
+                    setEmailSenderName("");
+                    setEmailResult(null);
+                  }}
+                  className="px-5 py-3 border border-apple-gray-300 rounded-lg font-medium text-apple-gray-500 hover:bg-apple-gray-50 transition-colors text-sm"
+                >
+                  Clear
+                </button>
+              </div>
+
+              {/* Setup reminder */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm">
+                <p className="font-semibold text-yellow-900 mb-1">
+                  ⚙️ Gmail Setup Reminder
+                </p>
+                <p className="text-yellow-800">
+                  Make sure{" "}
+                  <code className="bg-yellow-100 px-1 rounded">EMAIL_FROM</code>{" "}
+                  and{" "}
+                  <code className="bg-yellow-100 px-1 rounded">
+                    EMAIL_APP_PASSWORD
+                  </code>{" "}
+                  are set in your environment variables. Use a Gmail App
+                  Password (not your regular password).
                 </p>
               </div>
             </div>

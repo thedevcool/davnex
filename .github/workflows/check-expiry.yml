@@ -1,45 +1,83 @@
 name: TV Subscription Expiry Check
 
-# Run daily at 9 AM UTC (adjust timezone as needed)
+# ─────────────────────────────────────────────────────────────────────────────
+# SETUP INSTRUCTIONS
+# -─────────────────────────────────────────────────────────────────────────────
+# 1. Go to your GitHub repo → Settings → Secrets and variables → Actions
+# 2. Add these repository secrets:
+#      APP_URL     – your deployed Vercel URL, e.g. https://davnex.vercel.app
+#      CRON_SECRET – same value as CRON_SECRET in your Vercel environment
+# 3. That's it. The workflow will run daily and retry up to 3 times on failure.
+#
+# Alternative cron-job.org setup (no GitHub secrets needed):
+#   1. Sign up free at https://cron-job.org
+#   2. Create a new job:
+#        URL:    https://<your-app>.vercel.app/api/tv/check-expiry
+#        Method: GET
+#        Headers: Authorization: Bearer <your-CRON_SECRET>
+#        Schedule: daily at 09:00 UTC
+# ─────────────────────────────────────────────────────────────────────────────
+
 on:
   schedule:
-    - cron: "0 9 * * *" # Daily at 9:00 AM UTC
-
-  # Allow manual trigger from GitHub Actions tab
-  workflow_dispatch:
+    - cron: "0 9 * * *" # Daily at 09:00 UTC
+  workflow_dispatch: # Allow manual run from the Actions tab
 
 jobs:
   check-expiry:
+    name: Check TV Subscription Expiry
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - name: Check TV Subscription Expiry
+      - name: Validate secrets
+        run: |
+          if [ -z "${{ secrets.APP_URL }}" ]; then
+            echo "⚠️  APP_URL secret is not set. Add it in: Settings → Secrets → Actions"
+            echo "   Using default URL (may fail if app is not deployed there)"
+          fi
+
+      - name: Trigger expiry check (with retries)
         env:
           APP_URL: ${{ secrets.APP_URL || 'https://davnex.vercel.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          echo "Triggering expiry check at $APP_URL"
-          
-          # Make the API call with error handling
-          response=$(curl -s -w "\n%{http_code}" -X POST "$APP_URL/api/tv/check-expiry" \
-            -H "Authorization: Bearer $CRON_SECRET" \
-            -H "Content-Type: application/json")
-          
-          # Extract response body and status code
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-          
-          echo "Response status: $http_code"
-          echo "Response body: $body"
-          
-          # Check if request was successful
-          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-            echo "✅ Expiry check completed successfully"
-          else
-            echo "❌ Expiry check failed with status $http_code"
-            exit 1
-          fi
+          MAX_RETRIES=3
+          RETRY_DELAY=30  # seconds between retries
 
-      - name: Log completion
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "────────────────────────────────────────"
+            echo "Attempt $attempt / $MAX_RETRIES"
+            echo "URL: $APP_URL/api/tv/check-expiry"
+            echo "────────────────────────────────────────"
+
+            response=$(curl -s -w "\n%{http_code}" \
+              -X GET "$APP_URL/api/tv/check-expiry" \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              -H "Content-Type: application/json" \
+              --connect-timeout 30 \
+              --max-time 120)
+
+            http_code=$(echo "$response" | tail -n1)
+            body=$(echo "$response" | sed '$d')
+
+            echo "Status: $http_code"
+            echo "Response: $body"
+
+            if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+              echo "✅ Expiry check completed successfully"
+              exit 0
+            fi
+
+            if [ $attempt -lt $MAX_RETRIES ]; then
+              echo "❌ Request failed (status $http_code). Retrying in ${RETRY_DELAY}s…"
+              sleep $RETRY_DELAY
+            else
+              echo "❌ All $MAX_RETRIES attempts failed. Last status: $http_code"
+              exit 1
+            fi
+          done
+
+      - name: Log completion time
         if: always()
-        run: echo "Expiry check workflow completed at $(date)"
+        run: echo "Workflow finished at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"

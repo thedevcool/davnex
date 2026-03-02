@@ -1,39 +1,52 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { sendEmail } from '@/lib/email/emailService';
-import { getPromotionalEmail } from '@/lib/email/emailTemplates';
-import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { sendBulkEmail } from "@/lib/email/emailService";
+import { getPromotionalEmail } from "@/lib/email/emailTemplates";
+import { db } from "@/lib/firebase";
+import { collection, query, where, getDocs } from "firebase/firestore";
 
+/**
+ * POST /api/email/promotional
+ * Sends a broadcast to all users who have opted in to promotional emails.
+ * Requires the `davnex-admin` session cookie (set at admin login).
+ */
 export async function POST(request: NextRequest) {
+  // Verify admin session cookie
+  const cookieStore = await cookies();
+  const isAdmin = cookieStore.get("davnex-admin")?.value === "true";
+  if (!isAdmin) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    const { title, message, ctaText, ctaUrl, imageUrl, sendToAll } = await request.json();
+    const { title, message, ctaText, ctaUrl, imageUrl } = await request.json();
 
     if (!title || !message) {
       return NextResponse.json(
-        { error: 'Title and message are required' },
-        { status: 400 }
+        { error: "title and message are required" },
+        { status: 400 },
       );
     }
 
-    // Fetch users who opted in for promotional emails
     if (!db) {
       return NextResponse.json(
-        { error: 'Database not initialized' },
-        { status: 500 }
+        { error: "Database not initialized" },
+        { status: 500 },
       );
     }
 
     const usersQuery = query(
-      collection(db, 'users'),
-      where('emailPreferences.promotional', '==', true)
+      collection(db, "users"),
+      where("emailPreferences.promotional", "==", true),
     );
-    const usersSnapshot = await getDocs(usersQuery);
+    const snapshot = await getDocs(usersQuery);
 
-    if (usersSnapshot.empty) {
+    if (snapshot.empty) {
       return NextResponse.json({
         success: true,
-        message: 'No users opted in for promotional emails',
+        message: "No users have opted in to promotional emails",
         sent: 0,
+        total: 0,
       });
     }
 
@@ -44,46 +57,31 @@ export async function POST(request: NextRequest) {
       ctaUrl,
       imageUrl,
     });
+    const recipients = snapshot.docs.map((d) => ({
+      email: d.data().email as string,
+      name: d.data().displayName as string | undefined,
+    }));
 
-    // Send emails in batches to avoid rate limiting
-    const batchSize = 10;
-    const users = usersSnapshot.docs.map(doc => doc.data());
-    let sentCount = 0;
-
-    for (let i = 0; i < users.length; i += batchSize) {
-      const batch = users.slice(i, i + batchSize);
-      const emailPromises = batch.map(user =>
-        sendEmail({
-          to: user.email,
-          subject: title,
-          html: emailHtml,
-          text: message,
-        }).catch(error => {
-          console.error(`Failed to send to ${user.email}:`, error);
-          return null;
-        })
-      );
-
-      const results = await Promise.all(emailPromises);
-      sentCount += results.filter(r => r !== null).length;
-
-      // Wait a bit between batches to avoid rate limiting
-      if (i + batchSize < users.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
+    const result = await sendBulkEmail({
+      recipients,
+      subject: title,
+      getHtml: () => emailHtml,
+      getText: () => message,
+    });
 
     return NextResponse.json({
       success: true,
-      message: `Promotional email sent to ${sentCount} users`,
-      sent: sentCount,
-      total: users.length,
+      message: `Promotional email sent to ${result.successCount} of ${recipients.length} recipients`,
+      sent: result.successCount,
+      failed: result.failureCount,
+      total: recipients.length,
+      errors: result.errors.length > 0 ? result.errors : undefined,
     });
   } catch (error) {
-    console.error('Error sending promotional email:', error);
+    console.error("[promotional] Error:", error);
     return NextResponse.json(
-      { error: 'Failed to send promotional email' },
-      { status: 500 }
+      { error: "Failed to send promotional email" },
+      { status: 500 },
     );
   }
 }
